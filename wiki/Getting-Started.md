@@ -34,7 +34,7 @@ apps/extension/dist
 2. 填写 WebDAV 根地址，例如 `https://dav.jianguoyun.com/dav/`。
 3. 填写 WebDAV 用户名。
 4. 填写 WebDAV 密码或应用密码。
-5. 填写 vault 文件路径，例如 `password-vault.json` 或 `passwords/password-vault.json`。
+5. 填写 vault 文件路径，例如 `PasswordWebDAV/password-vault.json`。也可以使用其他路径，比如 `passwords/password-vault.json`。
 6. 输入主密码。
 7. 点击“解锁或创建”。
 
@@ -51,7 +51,20 @@ apps/extension/dist
 - 点击“填充”把账号和密码填入当前登录页。
 - 点击锁图标清空当前会话里的解锁状态。
 
-## 6. 开发模式
+## 6. 登录后提示保存
+
+自动保存提示的使用步骤：
+
+1. 先打开 Password WebDAV 插件并完成解锁。
+2. 去目标网站登录，例如 GitHub。
+3. 插件在你提交登录表单时会临时记住本次输入。
+4. 如果登录页跳转成功，页面右下角会出现“保存到 Password WebDAV？”。
+5. 点击“保存”后，插件会重新读取 WebDAV 上的最新 vault，解密、合并该账号，再加密上传。
+6. 点击“不保存”会丢弃本次临时记录。
+
+如果没有先解锁插件，点击保存时会提示你先解锁 vault。插件不会自动静默保存密码，必须由你点击“保存”确认。
+
+## 7. 开发模式
 
 如果你正在开发插件，可以运行：
 
@@ -60,4 +73,3 @@ npm run dev:extension
 ```
 
 然后在 `chrome://extensions` 里重新加载插件。
-

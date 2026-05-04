@@ -19,7 +19,7 @@ https://example.com/remote.php/dav/files/your-user/
 Vault 文件路径示例：
 
 ```text
-password-vault.json
+PasswordWebDAV/password-vault.json
 ```
 
 如果你想放在子目录：
@@ -43,4 +43,3 @@ Vault 文件里只有密文，但仍建议：
 - 不要把 vault 文件放到公开目录。
 - 不要共享 WebDAV 账号。
 - 定期备份 `password-vault.json`。
-

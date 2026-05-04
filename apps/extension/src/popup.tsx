@@ -150,6 +150,13 @@ function PopupApp() {
     setStatus(nextStatus);
   }
 
+  async function rememberMasterPasswordForBackground() {
+    await chrome.runtime.sendMessage({
+      type: "password-webdav.set-master-password",
+      masterPassword,
+    });
+  }
+
   async function handleUnlock() {
     const error = validateUnlock(settings, masterPassword);
     if (error) {
@@ -165,12 +172,14 @@ function PopupApp() {
       if (!file) {
         const nextVault = createEmptyVault();
         await persistVault(nextVault, "WebDAV 上没有 vault，已创建新的加密密码库。");
+        await rememberMasterPasswordForBackground();
         setSelectedEntry(null);
         return;
       }
 
       const plain = await decryptVault(masterPassword, file);
       await saveUnlockedVault(plain);
+      await rememberMasterPasswordForBackground();
       setVault(plain);
       setSelectedEntry(plain.entries[0] ?? null);
       setDirty(false);
@@ -270,6 +279,7 @@ function PopupApp() {
 
   async function lockVault() {
     await clearUnlockedVault();
+    await chrome.runtime.sendMessage({ type: "password-webdav.clear-master-password" });
     setVault(null);
     setSelectedEntry(null);
     setMasterPassword("");
