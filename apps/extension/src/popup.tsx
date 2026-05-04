@@ -16,7 +16,7 @@ import {
   X,
 } from "lucide-react";
 import { createRoot } from "react-dom/client";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import {
   createEmptyVault,
   decryptVault,
@@ -84,6 +84,11 @@ function folderFilterLabel(folder: string) {
   if (folder === ALL_FOLDERS) return "全部";
   if (folder === UNCATEGORIZED_FOLDER) return "未分类";
   return folder;
+}
+
+function folderTreeLabel(folder: string) {
+  if (folder === ALL_FOLDERS || folder === UNCATEGORIZED_FOLDER) return folderFilterLabel(folder);
+  return folderDisplayName(folder);
 }
 
 function uniqueNonEmpty(values: string[]) {
@@ -1044,12 +1049,17 @@ function PopupApp() {
       (folder === ALL_FOLDERS ? 0 : folder === UNCATEGORIZED_FOLDER ? 1 : Math.max(1, folder.split("/").length));
     const normalized = isSpecial ? folder : normalizeFolderPath(folder);
     const count = entryCountForFolder(folder);
+    const treeLabel = folderTreeLabel(folder);
 
     return (
       <div
         key={folder}
         className={`folder-row${depth > 0 ? " tree-child" : " tree-root"}${selected ? " selected" : ""}${isDropTarget ? " drag-over" : ""}`}
-        style={{ paddingLeft: `${10 + depth * 16}px` }}
+        style={{
+          paddingLeft: `${8 + depth * 16}px`,
+          "--tree-line-x": `${13 + (depth - 1) * 16}px`,
+          "--tree-dot-x": `${25 + (depth - 1) * 16}px`,
+        } as CSSProperties}
         draggable={!isSpecial}
         onDragStart={() => {
           if (!isSpecial) setDragItem({ type: "folder", folder: normalized });
@@ -1080,6 +1090,7 @@ function PopupApp() {
         <button
           type="button"
           className="folder-main"
+          title={isSpecial ? treeLabel : normalized}
           onClick={() => {
             setActiveFolder(folder);
             setBrowseMode("folders");
@@ -1106,7 +1117,7 @@ function PopupApp() {
               }}
             />
           ) : (
-            <span className="folder-name">{folderFilterLabel(folder)}</span>
+            <span className="folder-name">{treeLabel}</span>
           )}
           <span className="folder-count">{count}</span>
         </button>
