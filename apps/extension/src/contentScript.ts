@@ -1,5 +1,8 @@
 import type { VaultEntry } from "@password-webdav/core";
-import { loadExtensionConfig, type ExtensionTheme } from "./extensionState";
+
+type ExtensionTheme = "fresh" | "night" | "contrast";
+
+const CONFIG_KEY = "password-webdav.extension.config";
 
 interface DetectedLoginCandidate {
   username: string;
@@ -23,6 +26,16 @@ let suggestionEl: HTMLDivElement | null = null;
 let suggestionAnchor: HTMLInputElement | null = null;
 let suggestionRequestId = 0;
 let suggestionTimer = 0;
+
+async function loadPromptTheme(): Promise<ExtensionTheme> {
+  try {
+    const result = await chrome.storage.local.get(CONFIG_KEY);
+    const theme = (result[CONFIG_KEY] as { theme?: unknown } | undefined)?.theme;
+    return theme === "night" || theme === "contrast" ? theme : "fresh";
+  } catch {
+    return "fresh";
+  }
+}
 
 function dispatchInputEvents(element: HTMLInputElement, value: string) {
   const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
@@ -335,9 +348,7 @@ async function updateAutofillSuggestions(anchor: HTMLInputElement) {
   });
 
   if (requestId !== suggestionRequestId) return;
-  const theme = await loadExtensionConfig()
-    .then((config) => config.theme)
-    .catch(() => "fresh" as ExtensionTheme);
+  const theme = await loadPromptTheme();
 
   if (!response?.ok) {
     removeSuggestionPrompt();
@@ -399,9 +410,7 @@ async function showSavePrompt() {
     type: "password-webdav.get-detected-login-folder-options",
     entry: candidate,
   })) || { folders: [], defaultFolder: "", defaultTitle: "" };
-  const promptTheme = await loadExtensionConfig()
-    .then((config) => config.theme)
-    .catch(() => "fresh" as ExtensionTheme);
+  const promptTheme = await loadPromptTheme();
 
   if (promptEl) {
     promptLoading = false;
