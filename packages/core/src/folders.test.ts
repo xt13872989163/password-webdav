@@ -7,6 +7,10 @@ import {
   folderAncestors,
   mergeVaultFolders,
   normalizeFolderPath,
+  moveEntryToFolder,
+  moveVaultFolder,
+  renameVaultFolder,
+  removeVaultFolder,
 } from "./folders";
 import type { VaultEntry } from "./types";
 
@@ -46,5 +50,51 @@ describe("folders", () => {
   it("matches entries inside a folder tree", () => {
     expect(entryMatchesFolderTree(baseEntry, "Work")).toBe(true);
     expect(entryMatchesFolderTree(baseEntry, "Personal")).toBe(false);
+  });
+
+  it("removes a folder tree and moves entries to uncategorized", () => {
+    const vault = createEmptyVault();
+    vault.folders = ["Work", "Work/Accounts", "Personal"];
+    vault.entries = [
+      baseEntry,
+      { ...baseEntry, id: "2", folder: "Personal", title: "Mail" },
+    ];
+
+    const nextVault = removeVaultFolder(vault, "Work");
+
+    expect(nextVault.folders).toEqual(["Personal"]);
+    expect(nextVault.entries[0]?.folder).toBe("");
+    expect(nextVault.entries[1]?.folder).toBe("Personal");
+  });
+
+  it("moves an entry into a different folder", () => {
+    const vault = createEmptyVault();
+    vault.entries = [baseEntry];
+
+    const nextVault = moveEntryToFolder(vault, "1", "Teams/GitHub");
+
+    expect(nextVault.entries[0]?.folder).toBe("Teams/GitHub");
+    expect(nextVault.folders).toEqual(["Teams", "Teams/GitHub"]);
+  });
+
+  it("moves a folder tree under a new parent", () => {
+    const vault = createEmptyVault();
+    vault.folders = ["Work", "Work/Accounts", "Work/Accounts/Email", "Personal"];
+    vault.entries = [baseEntry, { ...baseEntry, id: "2", folder: "Work/Accounts/Email", title: "Mail" }];
+
+    const nextVault = moveVaultFolder(vault, "Work/Accounts", "Teams");
+
+    expect(nextVault.folders).toEqual(["Personal", "Teams", "Teams/Accounts", "Teams/Accounts/Email", "Work"]);
+    expect(nextVault.entries[0]?.folder).toBe("Teams/Accounts");
+    expect(nextVault.entries[1]?.folder).toBe("Teams/Accounts/Email");
+  });
+
+  it("renames a folder tree leaf", () => {
+    const vault = createEmptyVault();
+    vault.folders = ["Work", "Work/Accounts", "Work/Accounts/Email"];
+
+    const nextVault = renameVaultFolder(vault, "Work/Accounts", "Projects");
+
+    expect(nextVault.folders).toEqual(["Work", "Work/Projects", "Work/Projects/Email"]);
   });
 });

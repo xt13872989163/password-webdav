@@ -1,9 +1,12 @@
 import {
+  ArrowLeft,
   Copy,
   Dices,
-  Edit3,
+  Eye,
+  EyeOff,
   Folder,
   FolderPlus,
+  GripVertical,
   KeyRound,
   Lock,
   Plus,
@@ -14,19 +17,24 @@ import {
   Trash2,
 } from "lucide-react";
 import { createRoot } from "react-dom/client";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   createEmptyVault,
   decryptVault,
   encryptVault,
   entryFolder,
   entryMatchesFolderTree,
+  extractHost,
   generatePassword,
   loadVaultFile,
   mergeVaultFolders,
-  nowIso,
+  moveEntryToFolder,
+  moveVaultFolder,
   normalizeFolderPath,
   normalizeStoredVaultPath,
+  nowIso,
+  removeVaultFolder,
+  renameVaultFolder,
   saveVaultFile,
   sortEntriesForHost,
   sortFolders,
@@ -41,11 +49,11 @@ import {
   clearUnlockedVault,
   DEFAULT_EXTENSION_CONFIG,
   getExtensionVaultSubpath,
-  loadSessionMasterPassword,
   loadExtensionConfig,
+  loadSessionMasterPassword,
   loadUnlockedVault,
-  saveSessionMasterPassword,
   saveExtensionConfig,
+  saveSessionMasterPassword,
   saveUnlockedVault,
 } from "./extensionState";
 import "./popup.css";
@@ -56,6 +64,12 @@ const TITLE_SUGGESTIONS_ID = "pw-title-suggestions";
 const URL_SUGGESTIONS_ID = "pw-url-suggestions";
 const USERNAME_SUGGESTIONS_ID = "pw-username-suggestions";
 const FOLDER_SUGGESTIONS_ID = "pw-folder-suggestions";
+
+type BrowseMode = "folders" | "all";
+type DragItem =
+  | { type: "entry"; entryId: string }
+  | { type: "folder"; folder: string }
+  | null;
 
 function folderDisplayName(folder: string) {
   const parts = folder.split("/").filter(Boolean);
@@ -83,6 +97,10 @@ function uniqueNonEmpty(values: string[]) {
 
 function byMostRecent(left: VaultEntry, right: VaultEntry) {
   return right.updatedAt.localeCompare(left.updatedAt);
+}
+
+function currentHost(value: string) {
+  return extractHost(value);
 }
 
 function isNewDraftEntry(vault: PlainVault | null, entry: VaultEntry | null) {
@@ -122,14 +140,6 @@ function findExactDraftMatch(vault: PlainVault, entry: VaultEntry, fallbackHost:
   return null;
 }
 
-function currentHost(value: string) {
-  try {
-    return new URL(value).hostname.replace(/^www\./, "");
-  } catch {
-    return "";
-  }
-}
-
 async function getActiveTabUrl() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   return tab?.url ?? "";
@@ -143,7 +153,7 @@ function createEntry(
   const now = nowIso();
   return {
     id: uuid(),
-    title: defaults.title || host || "新密码",
+    title: defaults.title || host || "新条目",
     username: defaults.username || "",
     password: generatePassword(),
     url: defaults.url || (host ? `https://${host}` : ""),
@@ -198,10 +208,11 @@ function validateUnlock(settings: WebDavConfig, masterPassword: string) {
 }
 
 function deriveNewEntryDefaults(vault: PlainVault | null, host: string, activeFolder: string) {
-  const folderFromSidebar = activeFolder !== ALL_FOLDERS && activeFolder !== UNCATEGORIZED_FOLDER ? activeFolder : "";
+  const folderFromSidebar =
+    activeFolder !== ALL_FOLDERS && activeFolder !== UNCATEGORIZED_FOLDER ? activeFolder : "";
   if (!vault || !host) {
     return {
-      title: host || "新密码",
+      title: host || "新条目",
       username: "",
       url: host ? `https://${host}` : "",
       folder: folderFromSidebar,
@@ -215,11 +226,22 @@ function deriveNewEntryDefaults(vault: PlainVault | null, host: string, activeFo
   const latest = matches[0];
 
   return {
-    title: latest?.title || host || "新密码",
+    title: latest?.title || host || "新条目",
     username: usernames.length === 1 ? usernames[0] : "",
     url: latest?.url || `https://${host}`,
-    folder: folderFromSidebar || entryFolder(latest ?? { folder: "" } as VaultEntry),
+    folder: folderFromSidebar || (latest ? entryFolder(latest) : ""),
   };
+}
+
+function rebasePath(path: string, source: string, target: string) {
+  const normalizedPath = normalizeFolderPath(path);
+  const normalizedSource = normalizeFolderPath(source);
+  const normalizedTarget = normalizeFolderPath(target);
+  if (normalizedPath === normalizedSource) return normalizedTarget;
+  if (normalizedPath.startsWith(`${normalizedSource}/`)) {
+    return `${normalizedTarget}${normalizedPath.slice(normalizedSource.length)}`;
+  }
+  return normalizedPath;
 }
 
 function PopupApp() {
@@ -232,12 +254,15 @@ function PopupApp() {
   const [dirty, setDirty] = useState(false);
   const [query, setQuery] = useState("");
   const [tabUrl, setTabUrl] = useState("");
-  const [activeFolder, setActiveFolder] = useState(ALL_FOLDERS);
+  const [activeFolder, setActiveFolder] = useState<string>(ALL_FOLDERS);
   const [newFolderPath, setNewFolderPath] = useState("");
-  const splitPaneRef = useRef<HTMLDivElement | null>(null);
-  const [folderWidth, setFolderWidth] = useState(180);
-  const [listWidth, setListWidth] = useState(240);
-  const [activeSplitter, setActiveSplitter] = useState<"folders" | "entries" | null>(null);
+  const [browseMode, setBrowseMode] = useState<BrowseMode>("folders");
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [revealedEntryId, setRevealedEntryId] = useState<string | null>(null);
+  const [dragItem, setDragItem] = useState<DragItem>(null);
+  const [dropFolder, setDropFolder] = useState<string | null>(null);
+  const [renamingFolder, setRenamingFolder] = useState<string | null>(null);
+  const [renamingValue, setRenamingValue] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -271,53 +296,14 @@ function PopupApp() {
   }, []);
 
   useEffect(() => {
-    if (!activeSplitter) return;
-
-    const handleWidth = 12;
-    const minFolderWidth = 140;
-    const minListWidth = 180;
-    const minEditorWidth = 280;
-
-    function clamp(value: number, min: number, max: number) {
-      return Math.min(Math.max(value, min), max);
-    }
-
-    function handlePointerMove(event: PointerEvent) {
-      const pane = splitPaneRef.current;
-      if (!pane) return;
-
-      const rect = pane.getBoundingClientRect();
-      const totalWidth = rect.width;
-      const relativeX = event.clientX - rect.left;
-
-      if (activeSplitter === "folders") {
-        const maxFolderWidth = Math.max(minFolderWidth, totalWidth - listWidth - minEditorWidth - handleWidth * 2);
-        setFolderWidth(clamp(relativeX, minFolderWidth, maxFolderWidth));
-        return;
-      }
-
-      const leftOffset = folderWidth + handleWidth;
-      const nextWidth = relativeX - leftOffset;
-      const maxListWidth = Math.max(minListWidth, totalWidth - folderWidth - minEditorWidth - handleWidth * 2);
-      setListWidth(clamp(nextWidth, minListWidth, maxListWidth));
-    }
-
-    function handlePointerUp() {
-      setActiveSplitter(null);
-    }
-
-    window.addEventListener("pointermove", handlePointerMove);
-    window.addEventListener("pointerup", handlePointerUp);
-    return () => {
-      window.removeEventListener("pointermove", handlePointerMove);
-      window.removeEventListener("pointerup", handlePointerUp);
-    };
-  }, [activeSplitter, folderWidth, listWidth, splitPaneRef]);
+    setRevealedEntryId(null);
+  }, [browseMode, settingsOpen, activeFolder, query]);
 
   const host = useMemo(() => currentHost(tabUrl), [tabUrl]);
   const vaultSubpath = useMemo(() => getExtensionVaultSubpath(settings), [settings]);
   const selectedEntryIsNew = useMemo(() => isNewDraftEntry(vault, selectedEntry), [selectedEntry, vault]);
   const draftHost = useMemo(() => currentHost(selectedEntry?.url || tabUrl), [selectedEntry, tabUrl]);
+
   const entries = useMemo(() => {
     const source = vault?.entries ?? [];
     const visibleByFolder = source.filter((entry) => {
@@ -334,8 +320,22 @@ function PopupApp() {
             .includes(needle),
         )
       : visibleByFolder;
-    return sortEntriesForHost(filtered, host || query);
+    return [...sortEntriesForHost(filtered, host || query)].sort(byMostRecent);
   }, [activeFolder, host, query, vault]);
+
+  const allEntries = useMemo(() => {
+    const source = vault?.entries ?? [];
+    const needle = query.trim().toLowerCase();
+    const filtered = needle
+      ? source.filter((entry) =>
+          [entry.title, entry.username, entry.url, entry.notes, entryFolder(entry), ...entry.tags]
+            .join(" ")
+            .toLowerCase()
+            .includes(needle),
+        )
+      : source;
+    return [...sortEntriesForHost(filtered, host || query)].sort(byMostRecent);
+  }, [host, query, vault]);
 
   const folderOptions = useMemo(() => {
     if (!vault) return [] as string[];
@@ -348,15 +348,27 @@ function PopupApp() {
   }, [draftHost, host, vault]);
 
   const titleSuggestions = useMemo(
-    () => uniqueNonEmpty([...suggestedEntries.map((entry) => entry.title), ...(vault?.entries ?? []).map((entry) => entry.title)]).slice(0, 12),
+    () =>
+      uniqueNonEmpty([
+        ...suggestedEntries.map((entry) => entry.title),
+        ...(vault?.entries ?? []).map((entry) => entry.title),
+      ]).slice(0, 12),
     [suggestedEntries, vault],
   );
   const urlSuggestions = useMemo(
-    () => uniqueNonEmpty([...suggestedEntries.map((entry) => entry.url), ...(vault?.entries ?? []).map((entry) => entry.url)]).slice(0, 12),
+    () =>
+      uniqueNonEmpty([
+        ...suggestedEntries.map((entry) => entry.url),
+        ...(vault?.entries ?? []).map((entry) => entry.url),
+      ]).slice(0, 12),
     [suggestedEntries, vault],
   );
   const usernameSuggestions = useMemo(
-    () => uniqueNonEmpty([...suggestedEntries.map((entry) => entry.username), ...(vault?.entries ?? []).map((entry) => entry.username)]).slice(0, 12),
+    () =>
+      uniqueNonEmpty([
+        ...suggestedEntries.map((entry) => entry.username),
+        ...(vault?.entries ?? []).map((entry) => entry.username),
+      ]).slice(0, 12),
     [suggestedEntries, vault],
   );
   const quickUsernameSuggestions = useMemo(
@@ -387,7 +399,6 @@ function PopupApp() {
   }
 
   function applySuggestedEntry(entry: VaultEntry) {
-    if (!selectedEntry) return;
     setSelectedEntry(entry);
     setDirty(false);
     setStatus("已切换到匹配账号，可以继续编辑后保存同步。");
@@ -424,7 +435,7 @@ function PopupApp() {
       const file = await loadVaultFile(settings);
       if (!file) {
         const nextVault = createEmptyVault();
-        await persistVault(nextVault, "WebDAV 上没有 vault，已创建新的加密密码库。");
+        await persistVault(nextVault, "WebDAV 上没有找到 vault，已创建新的加密密码库。");
         await rememberMasterPasswordForBackground();
         setSelectedEntry(null);
         return;
@@ -446,7 +457,7 @@ function PopupApp() {
 
   async function handleRefresh() {
     if (!masterPassword) {
-      setStatus("刷新需要重新输入主密码。请锁定后再解锁。");
+      setStatus("刷新前需要会话主密码，请先重新解锁。");
       return;
     }
 
@@ -455,7 +466,7 @@ function PopupApp() {
     try {
       const file = await loadVaultFile(settings);
       if (!file) {
-        throw new Error("WebDAV 上没有 vault 文件。");
+        throw new Error("WebDAV 上没有找到 vault 文件。");
       }
       const plain = await decryptVault(masterPassword, file);
       await saveUnlockedVault(plain);
@@ -486,16 +497,46 @@ function PopupApp() {
     }
   }
 
-  async function handleDelete(id: string) {
+  async function handleDelete(entryId: string) {
     if (!vault) return;
     setBusy(true);
     setStatus("正在删除并同步...");
     try {
-      const nextVault = removeEntry(vault, id);
+      const nextVault = removeEntry(vault, entryId);
       await persistVault(nextVault, "已删除并同步到 WebDAV。");
-      setSelectedEntry(nextVault.entries[0] ?? null);
+      setSelectedEntry((current) => {
+        if (!current || current.id === entryId) {
+          return nextVault.entries[0] ?? null;
+        }
+        return nextVault.entries.find((entry) => entry.id === current.id) ?? nextVault.entries[0] ?? null;
+      });
+      if (revealedEntryId === entryId) {
+        setRevealedEntryId(null);
+      }
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "删除失败。");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleDeleteFolder(folder: string) {
+    if (!vault) return;
+    const normalized = normalizeFolderPath(folder);
+    if (!normalized) return;
+
+    setBusy(true);
+    setStatus(`正在删除文件夹 ${normalized}...`);
+    try {
+      const nextVault = removeVaultFolder(vault, normalized);
+      await persistVault(nextVault, `已删除文件夹 ${normalized}，其中条目已移动到未分类。`);
+      setActiveFolder(UNCATEGORIZED_FOLDER);
+      setSelectedEntry((current) => {
+        if (!current) return nextVault.entries[0] ?? null;
+        return nextVault.entries.find((entry) => entry.id === current.id) ?? nextVault.entries[0] ?? null;
+      });
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "删除文件夹失败。");
     } finally {
       setBusy(false);
     }
@@ -532,7 +573,8 @@ function PopupApp() {
     const entry = createEntry(host, defaults.folder, defaults);
     setSelectedEntry(entry);
     setDirty(true);
-    setStatus("已新建条目，并按当前网站带出默认值。");
+    setSettingsOpen(true);
+    setStatus("已新建条目，请在详情里补全并保存。");
   }
 
   async function handleFill(entry: VaultEntry) {
@@ -565,94 +607,400 @@ function PopupApp() {
     setSelectedEntry(null);
     setMasterPassword("");
     setDirty(false);
+    setSettingsOpen(false);
+    setRevealedEntryId(null);
     setStatus("已锁定。");
   }
 
-  if (!vault) {
+  async function handleSaveSettings() {
+    await saveExtensionConfig(settings);
+    setStatus("已保存设置。");
+  }
+
+  function beginRenameFolder(folder: string) {
+    setRenamingFolder(folder);
+    setRenamingValue(folderDisplayName(folder));
+  }
+
+  async function commitRenameFolder() {
+    if (!vault || !renamingFolder) return;
+    const nextName = normalizeFolderPath(renamingValue);
+    if (!nextName) {
+      setStatus("文件夹名称不能为空。");
+      return;
+    }
+    const source = renamingFolder;
+    setBusy(true);
+    try {
+      const nextVault = renameVaultFolder(vault, source, nextName);
+      const parent = normalizeFolderPath(source).split("/").slice(0, -1).join("/");
+      const nextPath = normalizeFolderPath(parent ? `${parent}/${nextName}` : nextName);
+      await persistVault(nextVault, `已重命名文件夹：${folderDisplayName(source)} → ${folderDisplayName(nextPath)}`);
+      setActiveFolder((current) => {
+        if (current === ALL_FOLDERS || current === UNCATEGORIZED_FOLDER) return current;
+        return rebasePath(current, source, nextPath);
+      });
+      setSelectedEntry((current) => {
+        if (!current) return nextVault.entries[0] ?? null;
+        return nextVault.entries.find((entry) => entry.id === current.id) ?? current;
+      });
+      setRenamingFolder(null);
+      setRenamingValue("");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "重命名文件夹失败。");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleDropOnFolder(target: string) {
+    if (!vault || !dragItem) return;
+    setDropFolder(null);
+    setDragItem(null);
+    setBusy(true);
+
+    try {
+      if (dragItem.type === "entry") {
+        const nextFolder = target === UNCATEGORIZED_FOLDER ? "" : target;
+        if (!nextFolder && target !== UNCATEGORIZED_FOLDER) {
+          setBusy(false);
+          return;
+        }
+        const nextVault = moveEntryToFolder(vault, dragItem.entryId, nextFolder);
+        await persistVault(
+          nextVault,
+          nextFolder ? `已将账号移动到 ${nextFolder}。` : "已将账号移动到未分类。",
+        );
+        setSelectedEntry(nextVault.entries.find((entry) => entry.id === dragItem.entryId) ?? selectedEntry);
+        return;
+      }
+
+      if (dragItem.type === "folder") {
+        if (target === UNCATEGORIZED_FOLDER) {
+          setBusy(false);
+          return;
+        }
+        const nextParent = target === ALL_FOLDERS ? "" : target;
+        const nextVault = moveVaultFolder(vault, dragItem.folder, nextParent);
+        const nextPath = normalizeFolderPath(
+          nextParent
+            ? `${nextParent}/${folderDisplayName(dragItem.folder)}`
+            : folderDisplayName(dragItem.folder),
+        );
+        await persistVault(nextVault, `已移动文件夹到 ${nextParent || "根目录"}。`);
+        setActiveFolder((current) => {
+          if (current === ALL_FOLDERS || current === UNCATEGORIZED_FOLDER) return current;
+          return rebasePath(current, dragItem.folder, nextPath);
+        });
+        setSelectedEntry((current) => {
+          if (!current) return nextVault.entries[0] ?? null;
+          return nextVault.entries.find((entry) => entry.id === current.id) ?? current;
+        });
+      }
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "拖拽移动失败。");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function entryCountForFolder(folder: string) {
+    if (!vault) return 0;
+    if (folder === ALL_FOLDERS) return vault.entries.length;
+    if (folder === UNCATEGORIZED_FOLDER) {
+      return vault.entries.filter((entry) => !entryFolder(entry)).length;
+    }
+    return vault.entries.filter((entry) => entryMatchesFolderTree(entry, folder)).length;
+  }
+
+  function canDropOnFolder(target: string) {
+    if (!dragItem) return false;
+    if (dragItem.type === "entry") {
+      return target !== ALL_FOLDERS;
+    }
+    if (target === UNCATEGORIZED_FOLDER) return false;
+    if (target === dragItem.folder) return false;
+    if (target !== ALL_FOLDERS && normalizeFolderPath(target).startsWith(`${dragItem.folder}/`)) {
+      return false;
+    }
+    return true;
+  }
+
+  function renderEntryRow(entry: VaultEntry, showFolderChip: boolean) {
+    const revealed = revealedEntryId === entry.id;
+    const selected = selectedEntry?.id === entry.id;
+
     return (
-      <main className="popup-shell">
+      <article
+        key={entry.id}
+        className={`entry-card${selected ? " selected" : ""}`}
+        draggable
+        onDragStart={() => setDragItem({ type: "entry", entryId: entry.id })}
+        onDragEnd={() => {
+          setDragItem(null);
+          setDropFolder(null);
+        }}
+        onClick={() => setSelectedEntry(entry)}
+        onDoubleClick={() => {
+          setSelectedEntry(entry);
+          setSettingsOpen(true);
+        }}
+      >
+        <div className="entry-top">
+          <div className="drag-handle" title="拖拽移动">
+            <GripVertical size={14} />
+          </div>
+          <div className="entry-info">
+            <div className="entry-title">
+              <strong>{entry.title || "未命名"}</strong>
+              <span className="entry-host">{currentHost(entry.url) || "无网址"}</span>
+            </div>
+            <p className="entry-username">{entry.username || entry.url || "未填写账号"}</p>
+          </div>
+          <div className="entry-actions">
+            <button
+              type="button"
+              className="mini-button"
+              title="填充"
+              onClick={(event) => {
+                event.stopPropagation();
+                void handleFill(entry);
+              }}
+            >
+              填充
+            </button>
+            <button
+              type="button"
+              className="icon-button small"
+              title="复制账号"
+              onClick={(event) => {
+                event.stopPropagation();
+                void copyToClipboard(entry.username, "账号");
+              }}
+            >
+              <Copy size={14} />
+            </button>
+            <button
+              type="button"
+              className="icon-button small"
+              title="复制密码"
+              onClick={(event) => {
+                event.stopPropagation();
+                void copyToClipboard(entry.password, "密码");
+              }}
+            >
+              <KeyRound size={14} />
+            </button>
+            <button
+              type="button"
+              className="icon-button small danger"
+              title="删除"
+              onClick={(event) => {
+                event.stopPropagation();
+                void handleDelete(entry.id);
+              }}
+            >
+              <Trash2 size={14} />
+            </button>
+          </div>
+        </div>
+
+        <div className="entry-meta">
+          {showFolderChip && entryFolder(entry) && <span className="chip">{entryFolder(entry)}</span>}
+          {entry.tags.slice(0, 2).map((tag) => (
+            <span key={`${entry.id}-${tag}`} className="chip">
+              {tag}
+            </span>
+          ))}
+          <span className="chip chip-muted">{new Date(entry.updatedAt).toLocaleDateString("zh-CN")}</span>
+        </div>
+
+        <div className="secret-row">
+          <span className={`secret-value${revealed ? " revealed" : ""}`}>
+            {revealed ? entry.password : "••••••••••••"}
+          </span>
+          <button
+            type="button"
+            className="text-button"
+            onClick={(event) => {
+              event.stopPropagation();
+              setRevealedEntryId((current) => (current === entry.id ? null : entry.id));
+            }}
+          >
+            {revealed ? (
+              <>
+                <EyeOff size={14} />
+                隐藏
+              </>
+            ) : (
+              <>
+                <Eye size={14} />
+                显示
+              </>
+            )}
+          </button>
+        </div>
+      </article>
+    );
+  }
+
+  function renderFolderRow(folder: string) {
+    const isSpecial = folder === ALL_FOLDERS || folder === UNCATEGORIZED_FOLDER;
+    const selected = activeFolder === folder;
+    const canDrop = canDropOnFolder(folder);
+    const isDropTarget = dropFolder === folder && canDrop;
+    const depth =
+      folder === ALL_FOLDERS || folder === UNCATEGORIZED_FOLDER
+        ? 0
+        : Math.max(0, folder.split("/").length - 1);
+    const normalized = isSpecial ? folder : normalizeFolderPath(folder);
+    const count = entryCountForFolder(folder);
+
+    return (
+      <div
+        key={folder}
+        className={`folder-row${selected ? " selected" : ""}${isDropTarget ? " drag-over" : ""}`}
+        style={{ paddingLeft: `${10 + depth * 14}px` }}
+        draggable={!isSpecial}
+        onDragStart={() => {
+          if (!isSpecial) setDragItem({ type: "folder", folder: normalized });
+        }}
+        onDragEnd={() => {
+          setDragItem(null);
+          setDropFolder(null);
+        }}
+        onDragOver={(event) => {
+          if (!canDropOnFolder(folder)) return;
+          event.preventDefault();
+          setDropFolder(folder);
+        }}
+        onDragLeave={() => {
+          if (dropFolder === folder) {
+            setDropFolder(null);
+          }
+        }}
+        onDrop={(event) => {
+          if (!canDropOnFolder(folder)) return;
+          event.preventDefault();
+          void handleDropOnFolder(folder);
+        }}
+        onDoubleClick={() => {
+          if (!isSpecial) beginRenameFolder(normalized);
+        }}
+      >
+        <button
+          type="button"
+          className="folder-main"
+          onClick={() => {
+            setActiveFolder(folder);
+            setBrowseMode("folders");
+          }}
+        >
+          <span className="drag-handle" aria-hidden="true">
+            <GripVertical size={14} />
+          </span>
+          {renamingFolder === normalized && !isSpecial ? (
+            <input
+              autoFocus
+              className="rename-input"
+              value={renamingValue}
+              onChange={(event) => setRenamingValue(event.target.value)}
+              onBlur={() => void commitRenameFolder()}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  void commitRenameFolder();
+                }
+                if (event.key === "Escape") {
+                  setRenamingFolder(null);
+                  setRenamingValue("");
+                }
+              }}
+            />
+          ) : (
+            <span className="folder-name">{folderFilterLabel(folder)}</span>
+          )}
+          <span className="folder-count">{count}</span>
+        </button>
+        {!isSpecial && (
+          <button
+            type="button"
+            className="icon-button small row-delete"
+            title="删除文件夹"
+            onClick={() => void handleDeleteFolder(normalized)}
+          >
+            <Trash2 size={14} />
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  function renderLockedScreen() {
+    return (
+      <main className="popup-shell unlock-shell">
         <header className="popup-header">
           <ShieldCheck size={18} />
           <strong>Password WebDAV</strong>
-          <button className="ghost-icon" title="设置" onClick={() => chrome.runtime.openOptionsPage()}>
+          <button
+            type="button"
+            className="icon-button"
+            title="打开设置页"
+            onClick={() => chrome.runtime.openOptionsPage()}
+          >
             <Settings size={16} />
           </button>
         </header>
 
-        <label>
-          <span>WebDAV 根地址</span>
-          <input value={settings.baseUrl} onChange={(event) => setSettings({ ...settings, baseUrl: event.target.value })} />
-        </label>
-        <label>
-          <span>用户名</span>
-          <input value={settings.username} onChange={(event) => setSettings({ ...settings, username: event.target.value })} />
-        </label>
-        <label>
-          <span>密码或应用密码</span>
-          <input type="password" value={settings.password} onChange={(event) => setSettings({ ...settings, password: event.target.value })} />
-        </label>
-        <label>
-          <span>Vault 子路径</span>
-          <div className="path-input">
-            <span className="path-prefix">{VAULT_ROOT_FOLDER}/</span>
-            <input value={vaultSubpath} onChange={(event) => updateVaultSubpath(event.target.value)} />
-          </div>
-        </label>
-        <p className="field-help">根目录固定为 `PasswordWebDAV/`，这里只填写里面的子路径，例如 `work/password-vault.json`。</p>
-        <label>
-          <span>主密码</span>
-          <input type="password" value={masterPassword} onChange={(event) => setMasterPassword(event.target.value)} />
-        </label>
-        <button className="primary" disabled={busy} onClick={handleUnlock}>
-          <Lock size={16} />
-          {busy ? "处理中..." : "解锁或创建"}
-        </button>
+        <section className="panel-card">
+          <label className="field">
+            <span>WebDAV 根地址</span>
+            <input value={settings.baseUrl} onChange={(event) => setSettings({ ...settings, baseUrl: event.target.value })} />
+          </label>
+          <label className="field">
+            <span>用户名</span>
+            <input value={settings.username} onChange={(event) => setSettings({ ...settings, username: event.target.value })} />
+          </label>
+          <label className="field">
+            <span>密码或应用密码</span>
+            <input type="password" value={settings.password} onChange={(event) => setSettings({ ...settings, password: event.target.value })} />
+          </label>
+          <label className="field">
+            <span>Vault 子路径</span>
+            <div className="path-input">
+              <span className="path-prefix">{VAULT_ROOT_FOLDER}/</span>
+              <input value={vaultSubpath} onChange={(event) => updateVaultSubpath(event.target.value)} />
+            </div>
+          </label>
+          <p className="field-help">
+            根目录固定为 <code>PasswordWebDAV/</code>，这里只填写里面的子路径，例如
+            <code>work/password-vault.json</code>。
+          </p>
+          <label className="field">
+            <span>主密码</span>
+            <input type="password" value={masterPassword} onChange={(event) => setMasterPassword(event.target.value)} />
+          </label>
+          <button type="button" className="primary-button" disabled={busy} onClick={handleUnlock}>
+            <Lock size={16} />
+            {busy ? "处理中..." : "解锁或创建"}
+          </button>
+        </section>
+
         {status && <p className="status">{status}</p>}
       </main>
     );
   }
 
-  return (
-    <main className="popup-shell manager-shell">
-      <header className="popup-header">
-        <ShieldCheck size={18} />
-        <strong>Password WebDAV</strong>
-        <button className="ghost-icon" title="设置" onClick={() => chrome.runtime.openOptionsPage()}>
-          <Settings size={16} />
-        </button>
-      </header>
-
-      <div className="meta-line">
-        <span>{host || "当前页面无可识别域名"} · {vault.entries.length} 条 · {folderFilterLabel(activeFolder)}</span>
-        <div className="toolbar-buttons">
-          <button className="ghost-icon" title="新增" onClick={handleAdd}>
-            <Plus size={15} />
-          </button>
-          <button className="ghost-icon" title="刷新" disabled={busy} onClick={handleRefresh}>
-            <RefreshCw size={15} />
-          </button>
-          <button className="ghost-icon" title="锁定" onClick={lockVault}>
-            <Lock size={15} />
-          </button>
-        </div>
-      </div>
-
-      <input className="search-input" placeholder="搜索密码" value={query} onChange={(event) => setQuery(event.target.value)} />
-
-      <div
-        ref={(node) => {
-          splitPaneRef.current = node;
-        }}
-        className="split-pane"
-        style={{
-          gridTemplateColumns: `${folderWidth}px 12px ${listWidth}px 12px minmax(280px, 1fr)`,
-        }}
-      >
-        <aside className="folder-panel">
-          <div className="folder-title">
-            <Folder size={15} />
-            <strong>文件夹</strong>
+  function renderFolderView() {
+    return (
+      <div className="layout-two-col">
+        <aside className="panel-card folder-panel">
+          <div className="panel-header">
+            <div>
+              <strong>文件夹</strong>
+              <span>双击改名，支持拖拽</span>
+            </div>
           </div>
+
           <div className="folder-create">
             <input
               placeholder="例如 工作/GitHub"
@@ -664,101 +1012,115 @@ function PopupApp() {
                 }
               }}
             />
-            <button className="ghost-icon" title="创建文件夹" disabled={busy} onClick={handleCreateFolder}>
+            <button type="button" className="icon-button" title="新建文件夹" onClick={() => void handleCreateFolder()}>
               <FolderPlus size={15} />
             </button>
           </div>
+
           <div className="folder-list">
-            <button
-              className={`folder-item ${activeFolder === ALL_FOLDERS ? "selected" : ""}`}
-              onClick={() => setActiveFolder(ALL_FOLDERS)}
-            >
-              <Folder size={14} />
-              <span>全部</span>
-            </button>
-            <button
-              className={`folder-item ${activeFolder === UNCATEGORIZED_FOLDER ? "selected" : ""}`}
-              onClick={() => setActiveFolder(UNCATEGORIZED_FOLDER)}
-            >
-              <Folder size={14} />
-              <span>未分类</span>
-            </button>
-            {folderOptions.map((folder) => (
-              <button
-                key={folder}
-                className={`folder-item ${activeFolder === folder ? "selected" : ""}`}
-                style={{ paddingLeft: `${10 + Math.max(0, folder.split("/").length - 1) * 14}px` }}
-                title={folder}
-                onClick={() => setActiveFolder(folder)}
-              >
-                <Folder size={14} />
-                <span>{folderDisplayName(folder)}</span>
-              </button>
-            ))}
+            {renderFolderRow(ALL_FOLDERS)}
+            {renderFolderRow(UNCATEGORIZED_FOLDER)}
+            {folderOptions.map((folder) => renderFolderRow(folder))}
           </div>
         </aside>
 
-        <div
-          className={`splitter ${activeSplitter === "folders" ? "active" : ""}`}
-          onPointerDown={(event) => {
-            event.preventDefault();
-            setActiveSplitter("folders");
-          }}
-        />
+        <section className="panel-card list-panel">
+          <div className="panel-header">
+            <div>
+              <strong>{folderFilterLabel(activeFolder)}</strong>
+              <span>
+                {entries.length} 条账号
+                {selectedEntry ? ` · 当前选中 ${selectedEntry.title || "未命名"}` : ""}
+              </span>
+            </div>
+          </div>
 
-        <div className="entry-list">
-          {entries.map((entry) => (
-            <article
-              key={entry.id}
-              className={`entry-card ${entry.id === selectedEntry?.id ? "selected" : ""}`}
-              onClick={() => setSelectedEntry(entry)}
-            >
-              <div>
-                <strong>{entry.title || "未命名"}</strong>
-                <p>{entry.username || entry.url || "未填写账号"}</p>
-                {entryFolder(entry) && <p className="entry-folder">{entryFolder(entry)}</p>}
-              </div>
-              <div className="entry-buttons">
-                <button title="复制账号" onClick={(event) => {
-                  event.stopPropagation();
-                  void copyToClipboard(entry.username, "账号");
-                }}>
-                  <Copy size={14} />
-                </button>
-                <button title="复制密码" onClick={(event) => {
-                  event.stopPropagation();
-                  void copyToClipboard(entry.password, "密码");
-                }}>
-                  <KeyRound size={14} />
-                </button>
-                <button className="fill-button" onClick={(event) => {
-                  event.stopPropagation();
-                  void handleFill(entry);
-                }}>
-                  填充
-                </button>
-              </div>
-            </article>
-          ))}
-          {entries.length === 0 && <p className="empty-hint">没有找到匹配的密码。</p>}
+          <div className="entry-list">
+            {entries.length > 0 ? entries.map((entry) => renderEntryRow(entry, false)) : <p className="empty-hint">当前范围内没有匹配账号。</p>}
+          </div>
+        </section>
+      </div>
+    );
+  }
+
+  function renderAllView() {
+    return (
+      <section className="panel-card list-panel">
+        <div className="panel-header">
+          <div>
+            <strong>全部账号</strong>
+            <span>{allEntries.length} 条账号 · 延续同一套紧凑列表</span>
+          </div>
         </div>
 
-        <div
-          className={`splitter ${activeSplitter === "entries" ? "active" : ""}`}
-          onPointerDown={(event) => {
-            event.preventDefault();
-            setActiveSplitter("entries");
-          }}
-        />
+        <div className="entry-list">
+          {allEntries.length > 0 ? allEntries.map((entry) => renderEntryRow(entry, true)) : <p className="empty-hint">没有找到匹配账号。</p>}
+        </div>
+      </section>
+    );
+  }
 
-        <section className="editor-box">
+  function renderSettingsView() {
+    return (
+      <div className="settings-stack">
+        <section className="panel-card settings-panel">
+          <div className="panel-header">
+            <div>
+              <strong>Vault 设置</strong>
+              <span>根目录固定为 PasswordWebDAV/</span>
+            </div>
+          </div>
+
+          <label className="field">
+            <span>WebDAV 根地址</span>
+            <input value={settings.baseUrl} onChange={(event) => setSettings({ ...settings, baseUrl: event.target.value })} />
+          </label>
+          <label className="field">
+            <span>用户名</span>
+            <input value={settings.username} onChange={(event) => setSettings({ ...settings, username: event.target.value })} />
+          </label>
+          <label className="field">
+            <span>密码或应用密码</span>
+            <input type="password" value={settings.password} onChange={(event) => setSettings({ ...settings, password: event.target.value })} />
+          </label>
+          <label className="field">
+            <span>Vault 子路径</span>
+            <div className="path-input">
+              <span className="path-prefix">{VAULT_ROOT_FOLDER}/</span>
+              <input value={vaultSubpath} onChange={(event) => updateVaultSubpath(event.target.value)} />
+            </div>
+          </label>
+          <div className="action-row">
+            <button type="button" className="primary-button compact" onClick={() => void handleSaveSettings()}>
+              <Save size={15} />
+              保存设置
+            </button>
+            <button type="button" className="ghost-button compact" disabled={busy} onClick={() => void handleRefresh()}>
+              <RefreshCw size={15} />
+              刷新
+            </button>
+            <button type="button" className="ghost-button compact" onClick={() => void lockVault()}>
+              <Lock size={15} />
+              锁定
+            </button>
+            <button type="button" className="ghost-button compact" onClick={() => chrome.runtime.openOptionsPage()}>
+              <Settings size={15} />
+              系统设置页
+            </button>
+          </div>
+        </section>
+
+        <section className="panel-card settings-panel">
+          <div className="panel-header">
+            <div>
+              <strong>{selectedEntry ? "条目详情" : "条目详情"}</strong>
+              <span>{selectedEntry ? "详细字段都放这里维护" : "先在主界面选择一个条目"}</span>
+            </div>
+          </div>
+
           {selectedEntry ? (
             <>
-              <div className="editor-title">
-                <Edit3 size={15} />
-                <strong>编辑密码</strong>
-              </div>
-              <label>
+              <label className="field">
                 <span>标题</span>
                 <input
                   list={TITLE_SUGGESTIONS_ID}
@@ -766,7 +1128,7 @@ function PopupApp() {
                   onChange={(event) => updateSelectedEntry({ ...selectedEntry, title: event.target.value }, "标题")}
                 />
               </label>
-              <label>
+              <label className="field">
                 <span>网址</span>
                 <input
                   list={URL_SUGGESTIONS_ID}
@@ -774,7 +1136,7 @@ function PopupApp() {
                   onChange={(event) => updateSelectedEntry({ ...selectedEntry, url: event.target.value }, "网址")}
                 />
               </label>
-              <label>
+              <label className="field">
                 <span>用户名</span>
                 <input
                   list={USERNAME_SUGGESTIONS_ID}
@@ -785,74 +1147,167 @@ function PopupApp() {
               {selectedEntryIsNew && quickUsernameSuggestions.length > 0 && (
                 <div className="suggestion-row">
                   {quickUsernameSuggestions.map((entry) => (
-                    <button key={`${entry.id}-username`} className="suggestion-chip" type="button" onClick={() => applySuggestedEntry(entry)}>
+                    <button
+                      key={`${entry.id}-username`}
+                      type="button"
+                      className="chip-button"
+                      onClick={() => applySuggestedEntry(entry)}
+                    >
                       {entry.username}
                     </button>
                   ))}
                 </div>
               )}
-              <label>
+              <label className="field">
                 <span>密码</span>
                 <div className="inline-input">
-                  <input type="password" value={selectedEntry.password} onChange={(event) => {
-                    setSelectedEntry({ ...selectedEntry, password: event.target.value });
-                    setDirty(true);
-                  }} />
-                  <button title="生成密码" onClick={() => {
-                    setSelectedEntry({ ...selectedEntry, password: generatePassword() });
-                    setDirty(true);
-                  }}>
+                  <input
+                    type={revealedEntryId === selectedEntry.id ? "text" : "password"}
+                    value={selectedEntry.password}
+                    onChange={(event) => {
+                      setSelectedEntry({ ...selectedEntry, password: event.target.value });
+                      setDirty(true);
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="icon-button"
+                    title={revealedEntryId === selectedEntry.id ? "隐藏密码" : "显示密码"}
+                    onClick={() => setRevealedEntryId((current) => (current === selectedEntry.id ? null : selectedEntry.id))}
+                  >
+                    {revealedEntryId === selectedEntry.id ? <EyeOff size={15} /> : <Eye size={15} />}
+                  </button>
+                  <button
+                    type="button"
+                    className="icon-button"
+                    title="生成密码"
+                    onClick={() => {
+                      setSelectedEntry({ ...selectedEntry, password: generatePassword() });
+                      setDirty(true);
+                    }}
+                  >
                     <Dices size={15} />
                   </button>
                 </div>
               </label>
-              <label>
+              <label className="field">
                 <span>文件夹</span>
                 <input
                   list={FOLDER_SUGGESTIONS_ID}
                   placeholder="例如 工作/GitHub，留空为未分类"
                   value={selectedEntry.folder || ""}
-                  onChange={(event) => {
-                    updateSelectedEntry({ ...selectedEntry, folder: event.target.value });
-                  }}
+                  onChange={(event) => updateSelectedEntry({ ...selectedEntry, folder: event.target.value })}
                 />
               </label>
-              <p className="field-help">`PasswordWebDAV/` 是固定根目录，后面只能改子路径。输入时会自动给出常见标题、网址、账号和文件夹建议。</p>
-              <label>
+              <label className="field">
                 <span>标签</span>
                 <input
+                  placeholder="例如 work, finance"
                   value={tagsToText(selectedEntry.tags)}
-                  onChange={(event) => {
-                    updateSelectedEntry({ ...selectedEntry, tags: textToTags(event.target.value) });
-                  }}
+                  onChange={(event) => updateSelectedEntry({ ...selectedEntry, tags: textToTags(event.target.value) })}
                 />
               </label>
-              <label>
+              <label className="field">
                 <span>备注</span>
                 <textarea
+                  placeholder="例如恢复码、登录说明、二次验证提示"
                   value={selectedEntry.notes}
-                  onChange={(event) => {
-                    updateSelectedEntry({ ...selectedEntry, notes: event.target.value });
-                  }}
+                  onChange={(event) => updateSelectedEntry({ ...selectedEntry, notes: event.target.value })}
                 />
               </label>
-              <p className="field-help">输入时会优先建议当前网站已有的标题、网址、账号和文件夹；新建条目遇到精确匹配时会自动带出密码。</p>
-              <div className="editor-actions">
-                <button className="primary" disabled={busy} onClick={handleSaveSelected}>
+
+              <div className="action-row">
+                <button type="button" className="primary-button compact" disabled={busy} onClick={() => void handleSaveSelected()}>
                   <Save size={15} />
                   {busy ? "保存中..." : "保存同步"}
                 </button>
-                <button className="danger" disabled={busy} onClick={() => handleDelete(selectedEntry.id)}>
+                <button type="button" className="ghost-button compact danger" disabled={busy} onClick={() => void handleDelete(selectedEntry.id)}>
                   <Trash2 size={15} />
                   删除
                 </button>
               </div>
             </>
           ) : (
-            <p className="empty-hint">选择一个密码，或点击新增。</p>
+            <p className="empty-hint">先在主界面选中一个账号，再到这里看详细字段。</p>
           )}
         </section>
       </div>
+    );
+  }
+
+  if (!vault) {
+    return renderLockedScreen();
+  }
+
+  return (
+    <main className="popup-shell manager-shell">
+      <header className="popup-header manager-header">
+        <div className="header-title">
+          {settingsOpen ? (
+            <button type="button" className="icon-button" title="返回" onClick={() => setSettingsOpen(false)}>
+              <ArrowLeft size={16} />
+            </button>
+          ) : (
+            <ShieldCheck size={18} />
+          )}
+          <div>
+            <strong>Password WebDAV</strong>
+            <span>{settingsOpen ? "设置 / 详情" : host || "当前页面无可识别域名"}</span>
+          </div>
+        </div>
+
+        <div className="header-actions">
+          {!settingsOpen && (
+            <div className="view-toggle">
+              <button
+                type="button"
+                className={browseMode === "folders" ? "active" : ""}
+                onClick={() => setBrowseMode("folders")}
+              >
+                文件夹
+              </button>
+              <button
+                type="button"
+                className={browseMode === "all" ? "active" : ""}
+                onClick={() => setBrowseMode("all")}
+              >
+                全部
+              </button>
+            </div>
+          )}
+          <button type="button" className="icon-button" title="设置" onClick={() => setSettingsOpen((value) => !value)}>
+            <Settings size={16} />
+          </button>
+        </div>
+      </header>
+
+      {!settingsOpen ? (
+        <>
+          <div className="toolbar-row">
+            <input
+              className="search-input"
+              placeholder="搜索标题、网址、账号、标签"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+            />
+            <div className="toolbar-actions">
+              <button type="button" className="icon-button" title="新建账号" onClick={handleAdd}>
+                <Plus size={16} />
+              </button>
+              <button type="button" className="icon-button" title="刷新" disabled={busy} onClick={() => void handleRefresh()}>
+                <RefreshCw size={16} />
+              </button>
+              <button type="button" className="icon-button" title="锁定" onClick={() => void lockVault()}>
+                <Lock size={16} />
+              </button>
+            </div>
+          </div>
+
+          {browseMode === "folders" ? renderFolderView() : renderAllView()}
+        </>
+      ) : (
+        renderSettingsView()
+      )}
 
       <datalist id={TITLE_SUGGESTIONS_ID}>
         {titleSuggestions.map((value) => (

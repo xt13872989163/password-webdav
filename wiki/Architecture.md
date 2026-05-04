@@ -4,7 +4,7 @@
 
 ```text
 apps/extension
-  Chrome MV3 插件，负责配置、创建 vault、解锁、管理条目、复制和填充当前页面
+  Chrome MV3 插件，负责配置、创建 vault、解锁、popup 双视图管理、设置 / 详情编辑、复制和填充当前页面
 
 packages/core
   共享 vault 类型、加密、WebDAV 客户端、域名匹配逻辑
@@ -91,7 +91,7 @@ WebDAV 不保存：
 - `chrome.storage.session`：保存当前浏览器会话里的解锁 vault。
 - `chrome.storage.session`：登录表单提交后，短时间保存一条待确认的候选账号密码，用于页面跳转后弹出“保存”提示。
 
-主密码不会写入 WebDAV 或 Chrome 存储。解锁后，扩展后台只在内存里临时持有主密码，用来处理“登录后点击保存”的加密上传；点击锁定、扩展后台重启或浏览器关闭后需要重新解锁。
+主密码不会写入 WebDAV，也不会进入 `chrome.storage.local` 这种长期配置存储。为了解决“关闭弹窗后保存还要再输一次”的问题，当前版本会把主密码和解锁后的 vault 暂存在 `chrome.storage.session`。点击锁定、扩展后台重启或浏览器关闭后需要重新解锁。
 
 ## 同步策略
 
@@ -99,5 +99,6 @@ WebDAV 不保存：
 
 - 保存条目时会加密并上传 WebDAV。
 - 创建文件夹时会把文件夹路径写入 vault，再加密上传 WebDAV。
+- 拖拽移动账号或文件夹时，也会更新 vault 并重新加密上传。
 - 刷新按钮会从 WebDAV 重新读取 vault。
 - 当前没有冲突合并，多设备同时编辑时需要人为避免覆盖。
