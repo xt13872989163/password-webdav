@@ -353,6 +353,32 @@ textarea:focus-visible {
   gap: 6px;
 }
 
+.header-preferences {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.header-select {
+  height: 32px;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--button-bg);
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 850;
+  padding: 0 8px;
+}
+
+.theme-select {
+  width: 92px;
+}
+
+.language-select {
+  width: 58px;
+}
+
 .view-toggle {
   display: inline-flex;
   align-items: center;

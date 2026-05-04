@@ -783,6 +783,48 @@ function PopupApp() {
     setStatus(text.status.settingsSaved);
   }
 
+  function updateAppearanceSettings(nextSettings: ExtensionConfig) {
+    setSettings(nextSettings);
+    void saveExtensionConfig(nextSettings);
+  }
+
+  function renderHeaderPreferences() {
+    return (
+      <div className="header-preferences">
+        <select
+          className="header-select theme-select"
+          title={text.theme}
+          aria-label={text.theme}
+          value={settings.theme}
+          onChange={(event) =>
+            updateAppearanceSettings({ ...settings, theme: event.target.value as ExtensionConfig["theme"] })
+          }
+        >
+          {EXTENSION_THEMES.map((theme) => (
+            <option key={theme.value} value={theme.value}>
+              {getThemeLabel(theme.value, settings.language)}
+            </option>
+          ))}
+        </select>
+        <select
+          className="header-select language-select"
+          title={text.language}
+          aria-label={text.language}
+          value={settings.language}
+          onChange={(event) =>
+            updateAppearanceSettings({ ...settings, language: event.target.value as ExtensionConfig["language"] })
+          }
+        >
+          {EXTENSION_LANGUAGES.map((language) => (
+            <option key={language.value} value={language.value}>
+              {language.label}
+            </option>
+          ))}
+        </select>
+      </div>
+    );
+  }
+
   function beginRenameFolder(folder: string) {
     setRenamingFolder(folder);
     setRenamingValue(folderDisplayName(folder));
@@ -1198,14 +1240,17 @@ function PopupApp() {
               <span>{text.lockedSubtitle}</span>
             </div>
           </div>
-          <button
-            type="button"
-            className="icon-button"
-            title={text.openSettingsPage}
-            onClick={() => chrome.runtime.openOptionsPage()}
-          >
-            <Settings size={16} />
-          </button>
+          <div className="header-actions">
+            {renderHeaderPreferences()}
+            <button
+              type="button"
+              className="icon-button"
+              title={text.openSettingsPage}
+              onClick={() => chrome.runtime.openOptionsPage()}
+            >
+              <Settings size={16} />
+            </button>
+          </div>
         </header>
 
         <section className="panel-card unlock-panel">
@@ -1644,6 +1689,7 @@ function PopupApp() {
               </button>
             </div>
           )}
+          {renderHeaderPreferences()}
           <button
             type="button"
             className="icon-button"
