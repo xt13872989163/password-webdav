@@ -132,9 +132,21 @@ textarea {
 
 .split-pane {
   display: grid;
-  grid-template-columns: minmax(160px, 180px) minmax(240px, 1fr) minmax(280px, 1.1fr);
-  gap: 10px;
+  gap: 0;
   min-height: 360px;
+  align-items: stretch;
+}
+
+.splitter {
+  width: 12px;
+  cursor: col-resize;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #e2e8f0 0%, #cbd5e1 100%);
+  align-self: stretch;
+}
+
+.splitter.active {
+  background: linear-gradient(180deg, #99f6e4 0%, #0f766e 100%);
 }
 
 .folder-panel {

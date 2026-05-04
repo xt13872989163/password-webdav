@@ -2,6 +2,7 @@ import { normalizeStoredVaultPath, vaultSubpathFromStoredPath, type PlainVault, 
 
 const CONFIG_KEY = "password-webdav.extension.config";
 const VAULT_KEY = "password-webdav.extension.vault";
+const MASTER_PASSWORD_KEY = "password-webdav.extension.master-password";
 
 export const DEFAULT_EXTENSION_CONFIG: WebDavConfig = {
   baseUrl: "",
@@ -37,4 +38,17 @@ export async function saveUnlockedVault(vault: PlainVault) {
 
 export async function clearUnlockedVault() {
   await chrome.storage.session.remove(VAULT_KEY);
+}
+
+export async function saveSessionMasterPassword(masterPassword: string) {
+  await chrome.storage.session.set({ [MASTER_PASSWORD_KEY]: masterPassword });
+}
+
+export async function loadSessionMasterPassword(): Promise<string> {
+  const result = await chrome.storage.session.get(MASTER_PASSWORD_KEY);
+  return String(result[MASTER_PASSWORD_KEY] || "");
+}
+
+export async function clearSessionMasterPassword() {
+  await chrome.storage.session.remove(MASTER_PASSWORD_KEY);
 }

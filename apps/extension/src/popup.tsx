@@ -14,7 +14,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { createRoot } from "react-dom/client";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   createEmptyVault,
   decryptVault,
@@ -37,11 +37,14 @@ import {
   type WebDavConfig,
 } from "@password-webdav/core";
 import {
+  clearSessionMasterPassword,
   clearUnlockedVault,
   DEFAULT_EXTENSION_CONFIG,
   getExtensionVaultSubpath,
+  loadSessionMasterPassword,
   loadExtensionConfig,
   loadUnlockedVault,
+  saveSessionMasterPassword,
   saveExtensionConfig,
   saveUnlockedVault,
 } from "./extensionState";
@@ -231,15 +234,85 @@ function PopupApp() {
   const [tabUrl, setTabUrl] = useState("");
   const [activeFolder, setActiveFolder] = useState(ALL_FOLDERS);
   const [newFolderPath, setNewFolderPath] = useState("");
+  const splitPaneRef = useRef<HTMLDivElement | null>(null);
+  const [folderWidth, setFolderWidth] = useState(180);
+  const [listWidth, setListWidth] = useState(240);
+  const [activeSplitter, setActiveSplitter] = useState<"folders" | "entries" | null>(null);
 
   useEffect(() => {
-    void loadExtensionConfig().then(setSettings);
-    void loadUnlockedVault().then((savedVault) => {
+    let cancelled = false;
+    void (async () => {
+      const [nextSettings, savedVault, sessionMasterPassword, nextTabUrl] = await Promise.all([
+        loadExtensionConfig(),
+        loadUnlockedVault(),
+        loadSessionMasterPassword(),
+        getActiveTabUrl(),
+      ]);
+
+      if (cancelled) return;
+
+      setSettings(nextSettings);
       setVault(savedVault);
       setSelectedEntry(savedVault?.entries[0] ?? null);
-    });
-    void getActiveTabUrl().then(setTabUrl);
+      setMasterPassword(savedVault ? sessionMasterPassword : "");
+      setTabUrl(nextTabUrl);
+
+      if (savedVault && sessionMasterPassword) {
+        await chrome.runtime.sendMessage({
+          type: "password-webdav.set-master-password",
+          masterPassword: sessionMasterPassword,
+        });
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
+
+  useEffect(() => {
+    if (!activeSplitter) return;
+
+    const handleWidth = 12;
+    const minFolderWidth = 140;
+    const minListWidth = 180;
+    const minEditorWidth = 280;
+
+    function clamp(value: number, min: number, max: number) {
+      return Math.min(Math.max(value, min), max);
+    }
+
+    function handlePointerMove(event: PointerEvent) {
+      const pane = splitPaneRef.current;
+      if (!pane) return;
+
+      const rect = pane.getBoundingClientRect();
+      const totalWidth = rect.width;
+      const relativeX = event.clientX - rect.left;
+
+      if (activeSplitter === "folders") {
+        const maxFolderWidth = Math.max(minFolderWidth, totalWidth - listWidth - minEditorWidth - handleWidth * 2);
+        setFolderWidth(clamp(relativeX, minFolderWidth, maxFolderWidth));
+        return;
+      }
+
+      const leftOffset = folderWidth + handleWidth;
+      const nextWidth = relativeX - leftOffset;
+      const maxListWidth = Math.max(minListWidth, totalWidth - folderWidth - minEditorWidth - handleWidth * 2);
+      setListWidth(clamp(nextWidth, minListWidth, maxListWidth));
+    }
+
+    function handlePointerUp() {
+      setActiveSplitter(null);
+    }
+
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", handlePointerUp);
+    return () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerUp);
+    };
+  }, [activeSplitter, folderWidth, listWidth, splitPaneRef]);
 
   const host = useMemo(() => currentHost(tabUrl), [tabUrl]);
   const vaultSubpath = useMemo(() => getExtensionVaultSubpath(settings), [settings]);
@@ -330,6 +403,7 @@ function PopupApp() {
   }
 
   async function rememberMasterPasswordForBackground() {
+    await saveSessionMasterPassword(masterPassword);
     await chrome.runtime.sendMessage({
       type: "password-webdav.set-master-password",
       masterPassword,
@@ -484,6 +558,7 @@ function PopupApp() {
   }
 
   async function lockVault() {
+    await clearSessionMasterPassword();
     await clearUnlockedVault();
     await chrome.runtime.sendMessage({ type: "password-webdav.clear-master-password" });
     setVault(null);
@@ -564,7 +639,15 @@ function PopupApp() {
 
       <input className="search-input" placeholder="搜索密码" value={query} onChange={(event) => setQuery(event.target.value)} />
 
-      <div className="split-pane">
+      <div
+        ref={(node) => {
+          splitPaneRef.current = node;
+        }}
+        className="split-pane"
+        style={{
+          gridTemplateColumns: `${folderWidth}px 12px ${listWidth}px 12px minmax(280px, 1fr)`,
+        }}
+      >
         <aside className="folder-panel">
           <div className="folder-title">
             <Folder size={15} />
@@ -615,6 +698,14 @@ function PopupApp() {
           </div>
         </aside>
 
+        <div
+          className={`splitter ${activeSplitter === "folders" ? "active" : ""}`}
+          onPointerDown={(event) => {
+            event.preventDefault();
+            setActiveSplitter("folders");
+          }}
+        />
+
         <div className="entry-list">
           {entries.map((entry) => (
             <article
@@ -651,6 +742,14 @@ function PopupApp() {
           ))}
           {entries.length === 0 && <p className="empty-hint">没有找到匹配的密码。</p>}
         </div>
+
+        <div
+          className={`splitter ${activeSplitter === "entries" ? "active" : ""}`}
+          onPointerDown={(event) => {
+            event.preventDefault();
+            setActiveSplitter("entries");
+          }}
+        />
 
         <section className="editor-box">
           {selectedEntry ? (
