@@ -1,5 +1,7 @@
 import {
   ArrowLeft,
+  ChevronDown,
+  ChevronRight,
   Dices,
   Eye,
   EyeOff,
@@ -311,6 +313,7 @@ function PopupApp() {
   const [dropFolder, setDropFolder] = useState<string | null>(null);
   const [renamingFolder, setRenamingFolder] = useState<string | null>(null);
   const [renamingValue, setRenamingValue] = useState("");
+  const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(() => new Set());
   const [editingEntryTitleId, setEditingEntryTitleId] = useState<string | null>(null);
   const [editingEntryTitleValue, setEditingEntryTitleValue] = useState("");
   const [tagDraft, setTagDraft] = useState("");
@@ -424,6 +427,11 @@ function PopupApp() {
     if (!vault) return [] as string[];
     return sortFolders(mergeVaultFolders(vault, vault.entries.map(entryFolder)));
   }, [vault]);
+
+  const visibleFolderOptions = useMemo(
+    () => folderOptions.filter((folder) => !folderHasCollapsedParent(folder, collapsedFolders)),
+    [collapsedFolders, folderOptions],
+  );
 
   const suggestedEntries = useMemo(() => {
     if (!vault) return [] as VaultEntry[];
@@ -774,6 +782,39 @@ function PopupApp() {
     setRenamingValue(folderDisplayName(folder));
   }
 
+  function folderHasChildren(folder: string) {
+    const normalized = normalizeFolderPath(folder);
+    return folderOptions.some((candidate) => candidate.startsWith(`${normalized}/`));
+  }
+
+  function folderHasCollapsedParent(folder: string, collapsed: Set<string>) {
+    const normalized = normalizeFolderPath(folder);
+    const parts = normalized.split("/").filter(Boolean);
+    for (let index = 1; index < parts.length; index += 1) {
+      const parent = parts.slice(0, index).join("/");
+      if (collapsed.has(parent)) return true;
+    }
+    return false;
+  }
+
+  function toggleFolderCollapse(folder: string) {
+    const normalized = normalizeFolderPath(folder);
+    if (!normalized || !folderHasChildren(normalized)) return;
+    setCollapsedFolders((current) => {
+      const next = new Set(current);
+      if (next.has(normalized)) {
+        next.delete(normalized);
+      } else {
+        next.add(normalized);
+      }
+      return next;
+    });
+    setActiveFolder((current) => {
+      if (current === normalized || current.startsWith(`${normalized}/`)) return normalized;
+      return current;
+    });
+  }
+
   function beginEditEntryTitle(entry: VaultEntry) {
     setSelectedEntry(entry);
     setEditingEntryTitleId(entry.id);
@@ -1050,6 +1091,8 @@ function PopupApp() {
     const normalized = isSpecial ? folder : normalizeFolderPath(folder);
     const count = entryCountForFolder(folder);
     const treeLabel = folderTreeLabel(folder);
+    const canCollapse = !isSpecial && folderHasChildren(normalized);
+    const collapsed = canCollapse && collapsedFolders.has(normalized);
 
     return (
       <div
@@ -1089,13 +1132,24 @@ function PopupApp() {
       >
         <button
           type="button"
-          className="folder-main"
+          className={`folder-main${canCollapse ? " has-children" : ""}`}
           title={isSpecial ? treeLabel : normalized}
           onClick={() => {
             setActiveFolder(folder);
             setBrowseMode("folders");
           }}
         >
+          <span
+            className={`folder-toggle${canCollapse ? "" : " placeholder"}`}
+            aria-hidden={!canCollapse}
+            title={collapsed ? "展开" : "收起"}
+            onClick={(event) => {
+              event.stopPropagation();
+              toggleFolderCollapse(normalized);
+            }}
+          >
+            {canCollapse ? collapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} /> : null}
+          </span>
           <span className="drag-handle" aria-hidden="true">
             <GripVertical size={14} />
           </span>
@@ -1265,7 +1319,7 @@ function PopupApp() {
           <div className="folder-list">
             {renderFolderRow(ALL_FOLDERS, 0)}
             {renderFolderRow(UNCATEGORIZED_FOLDER, 1)}
-            {folderOptions.map((folder) => renderFolderRow(folder, folder.split("/").length))}
+            {visibleFolderOptions.map((folder) => renderFolderRow(folder, folder.split("/").length))}
           </div>
         </aside>
 

@@ -532,13 +532,31 @@ textarea:focus-visible {
   min-width: 0;
   min-height: 28px;
   display: grid;
-  grid-template-columns: 10px minmax(0, 1fr) auto;
+  grid-template-columns: 14px 10px minmax(0, 1fr) auto;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   padding: 0;
   background: transparent;
   color: var(--text);
   text-align: left;
+}
+
+.folder-toggle {
+  width: 14px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  color: var(--accent);
+}
+
+.folder-toggle:not(.placeholder):hover {
+  background: var(--accent-soft);
+}
+
+.folder-toggle.placeholder {
+  opacity: 0;
 }
 
 .drag-handle {
