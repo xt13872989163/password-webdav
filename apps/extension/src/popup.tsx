@@ -1701,35 +1701,37 @@ function PopupApp() {
         </div>
       </header>
 
-      {panelMode === "main" ? (
-        <>
-          <div className="toolbar-row">
-            <input
-              className="search-input"
-              placeholder={text.searchPlaceholder}
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-            />
-            <div className="toolbar-actions">
-              <button type="button" className="icon-button" title={text.createEntry} onClick={handleAdd}>
-                <Plus size={16} />
-              </button>
-              <button type="button" className="icon-button" title={text.refresh} disabled={busy} onClick={() => void handleRefresh()}>
-                <RefreshCw size={16} />
-              </button>
-              <button type="button" className="icon-button" title={text.lock} onClick={() => void lockVault()}>
-                <Lock size={16} />
-              </button>
+      <div className="popup-content">
+        {panelMode === "main" ? (
+          <>
+            <div className="toolbar-row">
+              <input
+                className="search-input"
+                placeholder={text.searchPlaceholder}
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+              />
+              <div className="toolbar-actions">
+                <button type="button" className="icon-button" title={text.createEntry} onClick={handleAdd}>
+                  <Plus size={16} />
+                </button>
+                <button type="button" className="icon-button" title={text.refresh} disabled={busy} onClick={() => void handleRefresh()}>
+                  <RefreshCw size={16} />
+                </button>
+                <button type="button" className="icon-button" title={text.lock} onClick={() => void lockVault()}>
+                  <Lock size={16} />
+                </button>
+              </div>
             </div>
-          </div>
 
-          {browseMode === "folders" ? renderFolderView() : renderAllView()}
-        </>
-      ) : panelMode === "settings" ? (
-        renderSettingsView()
-      ) : (
-        renderEntryDetailView()
-      )}
+            {browseMode === "folders" ? renderFolderView() : renderAllView()}
+          </>
+        ) : panelMode === "settings" ? (
+          renderSettingsView()
+        ) : (
+          renderEntryDetailView()
+        )}
+      </div>
 
       <datalist id={TITLE_SUGGESTIONS_ID}>
         {titleSuggestions.map((value) => (
@@ -1752,7 +1754,7 @@ function PopupApp() {
         ))}
       </datalist>
 
-      {status && <p className="status">{status}{dirty ? ` · ${text.dirtySuffix}` : ""}</p>}
+      {status && <p className="status popup-status">{status}{dirty ? ` · ${text.dirtySuffix}` : ""}</p>}
     </main>
   );
 }

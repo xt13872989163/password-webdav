@@ -214,10 +214,16 @@ textarea:focus-visible {
   color: var(--text);
 }
 
+.popup-shell {
+  height: 600px;
+  display: flex;
+  flex-direction: column;
+}
+
 .unlock-shell {
   width: 520px;
   max-height: 600px;
-  overflow: auto;
+  overflow: hidden;
 }
 
 .unlock-panel {
@@ -286,14 +292,21 @@ textarea:focus-visible {
 
 .manager-shell {
   width: 520px;
-  max-height: 680px;
-  overflow: auto;
+  height: 680px;
+  overflow: hidden;
 }
 
 .options-shell {
   width: min(640px, 100%);
   display: grid;
   gap: 12px;
+}
+
+.popup-content {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding-right: 4px;
 }
 
 .popup-header {
@@ -1204,6 +1217,10 @@ textarea:focus-visible {
   background: var(--surface);
   color: var(--muted);
   font-size: 12px;
+}
+
+.popup-status {
+  flex: 0 0 auto;
 }
 
 .empty-hint {
