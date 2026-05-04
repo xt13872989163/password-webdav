@@ -3,6 +3,7 @@ import { decodeEncryptedVaultFile, encodeJson } from "./crypto";
 
 export const DEFAULT_VAULT_FILENAME = "password-vault.json";
 export const VAULT_ROOT_FOLDER = "PasswordWebDAV";
+const DEFAULT_WEBDAV_TIMEOUT_MS = 15_000;
 
 function trimLeadingSlashes(value: string) {
   return value.replace(/^\/+/, "");
@@ -83,13 +84,32 @@ function requestHeaders(config: WebDavConfig, contentType = "application/json") 
   };
 }
 
+async function webdavFetch(url: string, init: RequestInit, action: string) {
+  const controller = new AbortController();
+  const timeoutId = globalThis.setTimeout(() => controller.abort(), DEFAULT_WEBDAV_TIMEOUT_MS);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new Error(`WebDAV request timed out after ${DEFAULT_WEBDAV_TIMEOUT_MS}ms during ${action}`);
+    }
+    throw error;
+  } finally {
+    globalThis.clearTimeout(timeoutId);
+  }
+}
+
 async function ensureVaultDirectories(config: WebDavConfig) {
   const parentUrls = resolveVaultParentUrls(config);
   for (const parentUrl of parentUrls) {
-    const response = await fetch(parentUrl, {
+    const response = await webdavFetch(
+      parentUrl,
+      {
       method: "MKCOL",
       headers: requestHeaders(config, "text/plain"),
-    });
+      },
+      `MKCOL ${parentUrl}`,
+    );
     if (response.ok || response.status === 405 || response.status === 409) {
       continue;
     }
@@ -98,11 +118,16 @@ async function ensureVaultDirectories(config: WebDavConfig) {
 }
 
 export async function loadVaultFile(config: WebDavConfig) {
-  const response = await fetch(resolveVaultUrl(config), {
-    method: "GET",
-    headers: requestHeaders(config),
-    cache: "no-store",
-  });
+  const url = resolveVaultUrl(config);
+  const response = await webdavFetch(
+    url,
+    {
+      method: "GET",
+      headers: requestHeaders(config),
+      cache: "no-store",
+    },
+    `GET ${url}`,
+  );
   if (response.status === 404 || response.status === 409) {
     return null;
   }
@@ -114,22 +139,32 @@ export async function loadVaultFile(config: WebDavConfig) {
 
 export async function saveVaultFile(config: WebDavConfig, file: EncryptedVaultFile) {
   await ensureVaultDirectories(config);
-  const response = await fetch(resolveVaultUrl(config), {
-    method: "PUT",
-    headers: requestHeaders(config),
-    body: encodeJson(file),
-  });
+  const url = resolveVaultUrl(config);
+  const response = await webdavFetch(
+    url,
+    {
+      method: "PUT",
+      headers: requestHeaders(config),
+      body: encodeJson(file),
+    },
+    `PUT ${url}`,
+  );
   if (!response.ok) {
     throw new Error(`Failed to save vault to WebDAV: ${response.status} ${response.statusText}`);
   }
 }
 
 export async function probeVault(config: WebDavConfig) {
-  const response = await fetch(resolveVaultUrl(config), {
-    method: "HEAD",
-    headers: requestHeaders(config, "text/plain"),
-    cache: "no-store",
-  });
+  const url = resolveVaultUrl(config);
+  const response = await webdavFetch(
+    url,
+    {
+      method: "HEAD",
+      headers: requestHeaders(config, "text/plain"),
+      cache: "no-store",
+    },
+    `HEAD ${url}`,
+  );
   if (response.status === 404) {
     return { exists: false, etag: null };
   }

@@ -35,6 +35,7 @@ import {
   nowIso,
   removeVaultFolder,
   renameVaultFolder,
+  resolveVaultUrl,
   saveVaultFile,
   sortEntriesForHost,
   sortFolders,
@@ -244,6 +245,30 @@ function rebasePath(path: string, source: string, target: string) {
   return normalizedPath;
 }
 
+function formatUnlockError(error: unknown, settings: WebDavConfig) {
+  const raw = error instanceof Error ? error.message : "解锁失败。";
+  const url = resolveVaultUrl(settings);
+  if (/timed out/i.test(raw)) {
+    return `连接 WebDAV 超时，请检查网络、WebDAV 地址或服务响应。目标地址：${url}。${raw}`;
+  }
+  if (/401|403/i.test(raw)) {
+    return `WebDAV 认证失败，请检查用户名和应用密码。目标地址：${url}`;
+  }
+  if (/404|409/i.test(raw)) {
+    return `WebDAV 路径未就绪，正在尝试创建目录时失败。目标地址：${url}`;
+  }
+  if (/Failed to load vault from WebDAV/i.test(raw)) {
+    return `无法读取 WebDAV 上的 vault。目标地址：${url}。${raw}`;
+  }
+  if (/Failed to save vault to WebDAV/i.test(raw)) {
+    return `无法写入 WebDAV 上的 vault。目标地址：${url}。${raw}`;
+  }
+  if (/Failed to create WebDAV directory/i.test(raw)) {
+    return `无法创建 WebDAV 目录。目标地址：${url}。${raw}`;
+  }
+  return raw;
+}
+
 function PopupApp() {
   const [settings, setSettings] = useState<WebDavConfig>(DEFAULT_EXTENSION_CONFIG);
   const [masterPassword, setMasterPassword] = useState("");
@@ -424,23 +449,38 @@ function PopupApp() {
   async function handleUnlock() {
     const error = validateUnlock(settings, masterPassword);
     if (error) {
+      console.warn("[Password WebDAV] unlock validation failed", {
+        baseUrl: settings.baseUrl,
+        username: settings.username,
+        vaultPath: settings.vaultPath,
+        error,
+      });
       setStatus(error);
       return;
     }
 
     setBusy(true);
-    setStatus("正在连接 WebDAV...");
+    setStatus("正在检查 WebDAV 连接...");
+    console.info("[Password WebDAV] unlock start", {
+      baseUrl: settings.baseUrl,
+      username: settings.username,
+      vaultPath: settings.vaultPath,
+    });
     try {
       await saveExtensionConfig(settings);
       const file = await loadVaultFile(settings);
       if (!file) {
         const nextVault = createEmptyVault();
+        setStatus("未找到 vault，正在创建新的加密密码库...");
+        console.info("[Password WebDAV] vault not found, creating new encrypted vault");
         await persistVault(nextVault, "WebDAV 上没有找到 vault，已创建新的加密密码库。");
         await rememberMasterPasswordForBackground();
         setSelectedEntry(null);
+        console.info("[Password WebDAV] vault created and unlocked");
         return;
       }
 
+      setStatus("正在解密并载入密码库...");
       const plain = await decryptVault(masterPassword, file);
       await saveUnlockedVault(plain);
       await rememberMasterPasswordForBackground();
@@ -448,8 +488,15 @@ function PopupApp() {
       setSelectedEntry(plain.entries[0] ?? null);
       setDirty(false);
       setStatus(`已解锁 ${plain.entries.length} 条密码。`);
+      console.info("[Password WebDAV] unlock success", { entryCount: plain.entries.length });
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "解锁失败。");
+      console.error("[Password WebDAV] unlock failed", {
+        error,
+        baseUrl: settings.baseUrl,
+        username: settings.username,
+        vaultPath: settings.vaultPath,
+      });
+      setStatus(formatUnlockError(error, settings));
     } finally {
       setBusy(false);
     }
@@ -939,8 +986,13 @@ function PopupApp() {
     return (
       <main className="popup-shell unlock-shell">
         <header className="popup-header">
-          <ShieldCheck size={18} />
-          <strong>Password WebDAV</strong>
+          <div className="header-title">
+            <ShieldCheck size={18} />
+            <div>
+              <strong>Password WebDAV</strong>
+              <span>连接 WebDAV 并解锁当前会话</span>
+            </div>
+          </div>
           <button
             type="button"
             className="icon-button"
@@ -979,13 +1031,22 @@ function PopupApp() {
             <span>主密码</span>
             <input type="password" value={masterPassword} onChange={(event) => setMasterPassword(event.target.value)} />
           </label>
-          <button type="button" className="primary-button" disabled={busy} onClick={handleUnlock}>
-            <Lock size={16} />
-            {busy ? "处理中..." : "解锁或创建"}
-          </button>
+          <div className="unlock-footer">
+            <div className="unlock-status" aria-live="polite">
+              {status || (busy ? "正在处理，请稍等..." : "填写完连接信息后，点击按钮开始解锁或创建。")}
+            </div>
+            <button type="button" className="primary-button" disabled={busy} onClick={handleUnlock}>
+              <Lock size={16} />
+              {busy ? "处理中..." : "解锁或创建"}
+            </button>
+          </div>
         </section>
 
-        {status && <p className="status">{status}</p>}
+        <p className="status">
+          {status
+            ? `调试提示：如需更详细信息，请在扩展弹窗的开发者工具里查看 Console。`
+            : "如果卡住了，通常是 WebDAV 地址、用户名、应用密码或网络超时导致的。"}
+        </p>
       </main>
     );
   }

@@ -61,6 +61,11 @@ textarea:focus-visible {
   width: 370px;
 }
 
+.unlock-shell .panel-card {
+  display: grid;
+  gap: 10px;
+}
+
 .manager-shell {
   width: 500px;
   max-height: 680px;
@@ -284,6 +289,24 @@ textarea:focus-visible {
 .field textarea {
   min-height: 80px;
   resize: vertical;
+}
+
+.unlock-footer {
+  display: grid;
+  gap: 8px;
+}
+
+.unlock-status {
+  min-height: 54px;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(248, 251, 253, 0.96);
+  color: #4f6776;
+  font-size: 12px;
+  line-height: 1.55;
+  display: flex;
+  align-items: center;
 }
 
 .layout-two-col {
