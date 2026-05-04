@@ -13,6 +13,7 @@ import {
   Settings,
   ShieldCheck,
   Trash2,
+  X,
 } from "lucide-react";
 import { createRoot } from "react-dom/client";
 import { useEffect, useMemo, useState } from "react";
@@ -66,6 +67,7 @@ const FOLDER_SUGGESTIONS_ID = "pw-folder-suggestions";
 const DEBUG_LOG_KEY = "password-webdav.popup-debug-log";
 
 type BrowseMode = "folders" | "all";
+type PanelMode = "main" | "settings" | "entry";
 type DragItem =
   | { type: "entry"; entryId: string }
   | { type: "folder"; folder: string }
@@ -165,13 +167,9 @@ function createEntry(
   };
 }
 
-function tagsToText(tags: string[]) {
-  return tags.join(", ");
-}
-
 function textToTags(value: string) {
   return value
-    .split(",")
+    .split(/[，,]/)
     .map((tag) => tag.trim())
     .filter(Boolean);
 }
@@ -300,12 +298,15 @@ function PopupApp() {
   const [activeFolder, setActiveFolder] = useState<string>(ALL_FOLDERS);
   const [newFolderPath, setNewFolderPath] = useState("");
   const [browseMode, setBrowseMode] = useState<BrowseMode>("folders");
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [panelMode, setPanelMode] = useState<PanelMode>("main");
   const [revealedEntryId, setRevealedEntryId] = useState<string | null>(null);
   const [dragItem, setDragItem] = useState<DragItem>(null);
   const [dropFolder, setDropFolder] = useState<string | null>(null);
   const [renamingFolder, setRenamingFolder] = useState<string | null>(null);
   const [renamingValue, setRenamingValue] = useState("");
+  const [tagDraft, setTagDraft] = useState("");
+  const [editingTagIndex, setEditingTagIndex] = useState<number | null>(null);
+  const [editingTagValue, setEditingTagValue] = useState("");
   const [debugLog, setDebugLog] = useState<string[]>(() => loadDebugLog());
 
   function appendDebugLog(message: string) {
@@ -355,7 +356,13 @@ function PopupApp() {
 
   useEffect(() => {
     setRevealedEntryId(null);
-  }, [browseMode, settingsOpen, activeFolder, query]);
+  }, [browseMode, panelMode, activeFolder, query]);
+
+  useEffect(() => {
+    setTagDraft("");
+    setEditingTagIndex(null);
+    setEditingTagValue("");
+  }, [panelMode, selectedEntry?.id]);
 
   const host = useMemo(() => currentHost(tabUrl), [tabUrl]);
   const vaultSubpath = useMemo(() => getExtensionVaultSubpath(settings), [settings]);
@@ -454,6 +461,57 @@ function PopupApp() {
 
     setSelectedEntry(next);
     setDirty(true);
+  }
+
+  function openEntryDetail(entry: VaultEntry) {
+    setSelectedEntry(entry);
+    setPanelMode("entry");
+  }
+
+  function addSelectedEntryTag(rawValue: string) {
+    if (!selectedEntry) return;
+    const tags = textToTags(rawValue);
+    if (tags.length === 0) return;
+    const nextTags = uniqueNonEmpty([...selectedEntry.tags, ...tags]);
+    if (nextTags.length === selectedEntry.tags.length) {
+      setTagDraft("");
+      return;
+    }
+    updateSelectedEntry({ ...selectedEntry, tags: nextTags }, "标签");
+    setTagDraft("");
+  }
+
+  function removeSelectedEntryTag(tag: string) {
+    if (!selectedEntry) return;
+    updateSelectedEntry(
+      { ...selectedEntry, tags: selectedEntry.tags.filter((current) => current !== tag) },
+      "标签",
+    );
+  }
+
+  function beginEditSelectedEntryTag(index: number, tag: string) {
+    setEditingTagIndex(index);
+    setEditingTagValue(tag);
+  }
+
+  function commitEditSelectedEntryTag(index: number) {
+    if (!selectedEntry) return;
+    const currentTag = selectedEntry.tags[index];
+    if (currentTag === undefined) return;
+
+    const nextValue = editingTagValue.trim();
+    setEditingTagIndex(null);
+    setEditingTagValue("");
+
+    if (!nextValue) {
+      removeSelectedEntryTag(currentTag);
+      return;
+    }
+
+    const nextTags = uniqueNonEmpty(
+      selectedEntry.tags.map((tag, tagIndex) => (tagIndex === index ? nextValue : tag)),
+    );
+    updateSelectedEntry({ ...selectedEntry, tags: nextTags }, "标签");
   }
 
   function applySuggestedEntry(entry: VaultEntry) {
@@ -662,7 +720,7 @@ function PopupApp() {
     const entry = createEntry(host, defaults.folder, defaults);
     setSelectedEntry(entry);
     setDirty(true);
-    setSettingsOpen(true);
+    setPanelMode("entry");
     setStatus("已新建条目，请在详情里补全并保存。");
   }
 
@@ -683,7 +741,7 @@ function PopupApp() {
     setSelectedEntry(null);
     setMasterPassword("");
     setDirty(false);
-    setSettingsOpen(false);
+    setPanelMode("main");
     setRevealedEntryId(null);
     setStatus("已锁定。");
   }
@@ -825,8 +883,7 @@ function PopupApp() {
         }}
         onClick={() => setSelectedEntry(entry)}
         onDoubleClick={() => {
-          setSelectedEntry(entry);
-          setSettingsOpen(true);
+          openEntryDetail(entry);
         }}
       >
         <div className="entry-top">
@@ -1213,12 +1270,18 @@ function PopupApp() {
             </button>
           </div>
         </section>
+      </div>
+    );
+  }
 
+  function renderEntryDetailView() {
+    return (
+      <div className="settings-stack">
         <section className="panel-card settings-panel">
           <div className="panel-header">
             <div>
-              <strong>{selectedEntry ? "条目详情" : "条目详情"}</strong>
-              <span>{selectedEntry ? "详细字段都放这里维护" : "先在主界面选择一个条目"}</span>
+              <strong>{selectedEntry ? "密码详情" : "密码详情"}</strong>
+              <span>{selectedEntry ? selectedEntry.title || selectedEntry.username || "当前密码" : "先在主界面选择一个条目"}</span>
             </div>
           </div>
 
@@ -1305,11 +1368,61 @@ function PopupApp() {
               </label>
               <label className="field">
                 <span>标签</span>
-                <input
-                  placeholder="例如 work, finance"
-                  value={tagsToText(selectedEntry.tags)}
-                  onChange={(event) => updateSelectedEntry({ ...selectedEntry, tags: textToTags(event.target.value) })}
-                />
+                <div className="tag-editor">
+                  {selectedEntry.tags.map((tag, index) =>
+                    editingTagIndex === index ? (
+                      <input
+                        key={`${selectedEntry.id}-${tag}-edit`}
+                        autoFocus
+                        className="tag-pill-input"
+                        value={editingTagValue}
+                        onChange={(event) => setEditingTagValue(event.target.value)}
+                        onBlur={() => commitEditSelectedEntryTag(index)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            event.preventDefault();
+                            commitEditSelectedEntryTag(index);
+                          }
+                        }}
+                      />
+                    ) : (
+                      <span key={`${selectedEntry.id}-${tag}`} className="tag-pill">
+                        <button
+                          type="button"
+                          className="tag-pill-label"
+                          title="编辑标签"
+                          onClick={() => beginEditSelectedEntryTag(index, tag)}
+                        >
+                          {tag}
+                        </button>
+                        <button
+                          type="button"
+                          className="tag-pill-remove"
+                          title="删除标签"
+                          onClick={() => removeSelectedEntryTag(tag)}
+                        >
+                          <X size={12} />
+                        </button>
+                      </span>
+                    ),
+                  )}
+                  <input
+                    className="tag-input"
+                    placeholder={selectedEntry.tags.length > 0 ? "添加标签" : "例如 work，回车添加"}
+                    value={tagDraft}
+                    onChange={(event) => setTagDraft(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === ",") {
+                        event.preventDefault();
+                        addSelectedEntryTag(tagDraft);
+                      }
+                      if (event.key === "Backspace" && !tagDraft && selectedEntry.tags.length > 0) {
+                        removeSelectedEntryTag(selectedEntry.tags[selectedEntry.tags.length - 1]);
+                      }
+                    }}
+                    onBlur={() => addSelectedEntryTag(tagDraft)}
+                  />
+                </div>
               </label>
               <label className="field">
                 <span>备注</span>
@@ -1347,8 +1460,8 @@ function PopupApp() {
     <main className="popup-shell manager-shell">
       <header className="popup-header manager-header">
         <div className="header-title">
-          {settingsOpen ? (
-            <button type="button" className="icon-button" title="返回" onClick={() => setSettingsOpen(false)}>
+          {panelMode !== "main" ? (
+            <button type="button" className="icon-button" title="返回" onClick={() => setPanelMode("main")}>
               <ArrowLeft size={16} />
             </button>
           ) : (
@@ -1356,12 +1469,18 @@ function PopupApp() {
           )}
           <div>
             <strong>Password WebDAV</strong>
-            <span>{settingsOpen ? "设置 / 详情" : host || "当前页面无可识别域名"}</span>
+            <span>
+              {panelMode === "settings"
+                ? "Vault 设置"
+                : panelMode === "entry"
+                  ? "密码详情"
+                  : host || "当前页面无可识别域名"}
+            </span>
           </div>
         </div>
 
         <div className="header-actions">
-          {!settingsOpen && (
+          {panelMode === "main" && (
             <div className="view-toggle">
               <button
                 type="button"
@@ -1379,13 +1498,18 @@ function PopupApp() {
               </button>
             </div>
           )}
-          <button type="button" className="icon-button" title="设置" onClick={() => setSettingsOpen((value) => !value)}>
+          <button
+            type="button"
+            className="icon-button"
+            title="设置"
+            onClick={() => setPanelMode((value) => (value === "settings" ? "main" : "settings"))}
+          >
             <Settings size={16} />
           </button>
         </div>
       </header>
 
-      {!settingsOpen ? (
+      {panelMode === "main" ? (
         <>
           <div className="toolbar-row">
             <input
@@ -1409,8 +1533,10 @@ function PopupApp() {
 
           {browseMode === "folders" ? renderFolderView() : renderAllView()}
         </>
-      ) : (
+      ) : panelMode === "settings" ? (
         renderSettingsView()
+      ) : (
+        renderEntryDetailView()
       )}
 
       <datalist id={TITLE_SUGGESTIONS_ID}>

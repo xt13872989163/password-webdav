@@ -143,10 +143,15 @@ async function showSavePrompt() {
   promptLoading = true;
   const candidate = lastCandidate;
 
-  const folderOptions = (await sendRuntimeMessage<{ ok?: boolean; folders?: string[]; defaultFolder?: string }>({
+  const folderOptions = (await sendRuntimeMessage<{
+    ok?: boolean;
+    folders?: string[];
+    defaultFolder?: string;
+    defaultTitle?: string;
+  }>({
     type: "password-webdav.get-detected-login-folder-options",
     entry: candidate,
-  })) || { folders: [], defaultFolder: "" };
+  })) || { folders: [], defaultFolder: "", defaultTitle: "" };
 
   if (promptEl) {
     promptLoading = false;
@@ -177,6 +182,17 @@ async function showSavePrompt() {
   const account = document.createElement("div");
   account.style.cssText = "font-size:12px;color:#4b5563;margin-bottom:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap";
   appendText(account, candidate.username || location.hostname);
+
+  const titleField = document.createElement("label");
+  titleField.style.cssText = "display:flex;flex-direction:column;gap:6px;font-size:12px;color:#4b5563;margin-bottom:12px";
+  appendText(titleField, "标题");
+
+  const titleInput = document.createElement("input");
+  titleInput.type = "text";
+  titleInput.placeholder = "例如 GitHub";
+  titleInput.value = folderOptions.defaultTitle || candidate.title || location.hostname;
+  titleInput.style.cssText = "height:34px;border:1px solid #cbd5e1;border-radius:6px;padding:0 10px;background:#fff;color:#111827";
+  titleField.appendChild(titleInput);
 
   const folderField = document.createElement("label");
   folderField.style.cssText = "display:flex;flex-direction:column;gap:6px;font-size:12px;color:#4b5563;margin-bottom:12px";
@@ -211,7 +227,7 @@ async function showSavePrompt() {
   const status = document.createElement("div");
   status.style.cssText = "font-size:12px;color:#4b5563;margin-top:8px";
 
-  promptEl.append(title, account, folderField, actions, status);
+  promptEl.append(title, account, titleField, folderField, actions, status);
 
   dismissButton.addEventListener("click", () => {
     void sendRuntimeMessage({ type: "password-webdav.dismiss-detected-login" });
@@ -222,7 +238,7 @@ async function showSavePrompt() {
     status.textContent = "正在保存...";
     void sendRuntimeMessage<{ ok?: boolean; message?: string }>({
       type: "password-webdav.save-detected-login",
-      entry: { ...candidate, folder: folderSelect.value },
+      entry: { ...candidate, title: titleInput.value.trim() || candidate.title, folder: folderSelect.value },
     }).then((response) => {
       status.textContent = response?.message || "已处理。";
       if (response?.ok) {

@@ -136,7 +136,7 @@ async function getSessionMasterPassword() {
 
 async function getDetectedLoginFolderOptions(value: unknown) {
   const vault = await loadUnlockedVault();
-  if (!vault) return { folders: [] as string[], defaultFolder: "" };
+  if (!vault) return { folders: [] as string[], defaultFolder: "", defaultTitle: "" };
 
   const candidate = normalizeCandidate(value);
   const existing = vault.entries.find(
@@ -145,6 +145,7 @@ async function getDetectedLoginFolderOptions(value: unknown) {
   return {
     folders: vault.folders ?? [],
     defaultFolder: normalizeFolderPath(existing?.folder || ""),
+    defaultTitle: existing?.title || candidate.title,
   };
 }
 
@@ -212,7 +213,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type === "password-webdav.get-detected-login-folder-options") {
     void getDetectedLoginFolderOptions(message.entry)
       .then((options) => sendResponse({ ok: true, ...options }))
-      .catch(() => sendResponse({ ok: true, folders: [], defaultFolder: "" }));
+      .catch(() => sendResponse({ ok: true, folders: [], defaultFolder: "", defaultTitle: "" }));
     return true;
   }
 
