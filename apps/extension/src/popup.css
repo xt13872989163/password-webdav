@@ -215,9 +215,9 @@ textarea:focus-visible {
 }
 
 .unlock-shell {
-  width: min(520px, calc(100vw - 24px));
-  max-height: none;
-  overflow: visible;
+  width: 520px;
+  max-height: 600px;
+  overflow: auto;
 }
 
 .unlock-panel {
@@ -285,13 +285,13 @@ textarea:focus-visible {
 }
 
 .manager-shell {
-  width: min(520px, calc(100vw - 24px));
+  width: 520px;
   max-height: 680px;
   overflow: auto;
 }
 
 .options-shell {
-  width: min(640px, calc(100vw - 24px));
+  width: min(640px, 100%);
   display: grid;
   gap: 12px;
 }
