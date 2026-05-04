@@ -48,6 +48,7 @@ import {
   clearSessionMasterPassword,
   clearUnlockedVault,
   DEFAULT_EXTENSION_CONFIG,
+  EXTENSION_THEMES,
   getExtensionVaultSubpath,
   loadExtensionConfig,
   loadSessionMasterPassword,
@@ -55,6 +56,7 @@ import {
   saveExtensionConfig,
   saveSessionMasterPassword,
   saveUnlockedVault,
+  type ExtensionConfig,
 } from "./extensionState";
 import "./popup.css";
 
@@ -286,7 +288,7 @@ function formatUnlockError(error: unknown, settings: WebDavConfig) {
 }
 
 function PopupApp() {
-  const [settings, setSettings] = useState<WebDavConfig>(DEFAULT_EXTENSION_CONFIG);
+  const [settings, setSettings] = useState<ExtensionConfig>(DEFAULT_EXTENSION_CONFIG);
   const [masterPassword, setMasterPassword] = useState("");
   const [vault, setVault] = useState<PlainVault | null>(null);
   const [selectedEntry, setSelectedEntry] = useState<VaultEntry | null>(null);
@@ -304,6 +306,8 @@ function PopupApp() {
   const [dropFolder, setDropFolder] = useState<string | null>(null);
   const [renamingFolder, setRenamingFolder] = useState<string | null>(null);
   const [renamingValue, setRenamingValue] = useState("");
+  const [editingEntryTitleId, setEditingEntryTitleId] = useState<string | null>(null);
+  const [editingEntryTitleValue, setEditingEntryTitleValue] = useState("");
   const [tagDraft, setTagDraft] = useState("");
   const [editingTagIndex, setEditingTagIndex] = useState<number | null>(null);
   const [editingTagValue, setEditingTagValue] = useState("");
@@ -359,9 +363,18 @@ function PopupApp() {
   }, [browseMode, panelMode, activeFolder, query]);
 
   useEffect(() => {
+    document.documentElement.dataset.theme = settings.theme;
+  }, [settings.theme]);
+
+  useEffect(() => {
     setTagDraft("");
     setEditingTagIndex(null);
     setEditingTagValue("");
+  }, [panelMode, selectedEntry?.id]);
+
+  useEffect(() => {
+    setEditingEntryTitleId(null);
+    setEditingEntryTitleValue("");
   }, [panelMode, selectedEntry?.id]);
 
   const host = useMemo(() => currentHost(tabUrl), [tabUrl]);
@@ -756,6 +769,32 @@ function PopupApp() {
     setRenamingValue(folderDisplayName(folder));
   }
 
+  function beginEditEntryTitle(entry: VaultEntry) {
+    setSelectedEntry(entry);
+    setEditingEntryTitleId(entry.id);
+    setEditingEntryTitleValue(entry.title || "");
+  }
+
+  async function commitEditEntryTitle(entry: VaultEntry) {
+    if (!vault || editingEntryTitleId !== entry.id) return;
+    const nextTitle = editingEntryTitleValue.trim();
+    setEditingEntryTitleId(null);
+    setEditingEntryTitleValue("");
+    if (!nextTitle || nextTitle === entry.title) return;
+
+    setBusy(true);
+    try {
+      const nextEntry = { ...entry, title: nextTitle };
+      const nextVault = upsertEntry(vault, nextEntry);
+      await persistVault(nextVault, "已更新标题。");
+      setSelectedEntry(nextVault.entries.find((item) => item.id === entry.id) ?? nextEntry);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "更新标题失败。");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function commitRenameFolder() {
     if (!vault || !renamingFolder) return;
     const nextName = normalizeFolderPath(renamingValue);
@@ -892,7 +931,42 @@ function PopupApp() {
           </div>
           <div className="entry-info">
             <div className="entry-title">
-              <strong>{entry.title || "未命名"}</strong>
+              {editingEntryTitleId === entry.id ? (
+                <input
+                  autoFocus
+                  className="entry-title-input"
+                  value={editingEntryTitleValue}
+                  onClick={(event) => event.stopPropagation()}
+                  onDoubleClick={(event) => event.stopPropagation()}
+                  onChange={(event) => setEditingEntryTitleValue(event.target.value)}
+                  onBlur={() => void commitEditEntryTitle(entry)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      void commitEditEntryTitle(entry);
+                    }
+                    if (event.key === "Escape") {
+                      setEditingEntryTitleId(null);
+                      setEditingEntryTitleValue("");
+                    }
+                  }}
+                />
+              ) : (
+                <button
+                  type="button"
+                  className="entry-title-button"
+                  title="双击修改标题"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setSelectedEntry(entry);
+                  }}
+                  onDoubleClick={(event) => {
+                    event.stopPropagation();
+                    beginEditEntryTitle(entry);
+                  }}
+                >
+                  {entry.title || "未命名"}
+                </button>
+              )}
               <span className="entry-host">{currentHost(entry.url) || "无网址"}</span>
             </div>
             <div className="entry-credentials">
@@ -955,17 +1029,6 @@ function PopupApp() {
             </button>
           </div>
         </div>
-
-        {(showFolderChip && entryFolder(entry)) || entry.tags.length > 0 ? (
-          <div className="entry-meta">
-            {showFolderChip && entryFolder(entry) && <span className="chip">{entryFolder(entry)}</span>}
-            {entry.tags.slice(0, 2).map((tag) => (
-              <span key={`${entry.id}-${tag}`} className="chip">
-                {tag}
-              </span>
-            ))}
-          </div>
-        ) : null}
 
       </article>
     );
@@ -1063,7 +1126,7 @@ function PopupApp() {
 
   function renderLockedScreen() {
     return (
-      <main className="popup-shell unlock-shell">
+      <main className="popup-shell unlock-shell" data-theme={settings.theme}>
         <header className="popup-header">
           <div className="header-title">
             <ShieldCheck size={18} />
@@ -1109,6 +1172,16 @@ function PopupApp() {
           <label className="field">
             <span>主密码</span>
             <input type="password" value={masterPassword} onChange={(event) => setMasterPassword(event.target.value)} />
+          </label>
+          <label className="field">
+            <span>主题</span>
+            <select value={settings.theme} onChange={(event) => setSettings({ ...settings, theme: event.target.value as ExtensionConfig["theme"] })}>
+              {EXTENSION_THEMES.map((theme) => (
+                <option key={theme.value} value={theme.value}>
+                  {theme.label}
+                </option>
+              ))}
+            </select>
           </label>
           <div className="unlock-footer">
             <div className="unlock-status" aria-live="polite">
@@ -1189,10 +1262,7 @@ function PopupApp() {
           <div className="panel-header">
             <div>
               <strong>{folderFilterLabel(activeFolder)}</strong>
-              <span>
-                {entries.length} 条账号
-                {selectedEntry ? ` · 当前选中 ${selectedEntry.title || "未命名"}` : ""}
-              </span>
+              <span>{entries.length} 条账号</span>
             </div>
           </div>
 
@@ -1210,7 +1280,7 @@ function PopupApp() {
         <div className="panel-header">
           <div>
             <strong>全部账号</strong>
-            <span>{allEntries.length} 条账号 · 延续同一套紧凑列表</span>
+            <span>{allEntries.length} 条账号</span>
           </div>
         </div>
 
@@ -1251,6 +1321,27 @@ function PopupApp() {
               <input value={vaultSubpath} onChange={(event) => updateVaultSubpath(event.target.value)} />
             </div>
           </label>
+          <section className="settings-subsection">
+            <div className="panel-header compact">
+              <div>
+                <strong>界面设置</strong>
+                <span>只保存在当前浏览器，不写入 WebDAV vault</span>
+              </div>
+            </div>
+            <div className="theme-picker" role="radiogroup" aria-label="主题">
+              {EXTENSION_THEMES.map((theme) => (
+                <button
+                  key={theme.value}
+                  type="button"
+                  className={`theme-option${settings.theme === theme.value ? " active" : ""}`}
+                  onClick={() => setSettings({ ...settings, theme: theme.value })}
+                >
+                  <span className={`theme-swatch theme-swatch-${theme.value}`} />
+                  {theme.label}
+                </button>
+              ))}
+            </div>
+          </section>
           <div className="action-row">
             <button type="button" className="primary-button compact" onClick={() => void handleSaveSettings()}>
               <Save size={15} />
@@ -1457,7 +1548,7 @@ function PopupApp() {
   }
 
   return (
-    <main className="popup-shell manager-shell">
+    <main className="popup-shell manager-shell" data-theme={settings.theme}>
       <header className="popup-header manager-header">
         <div className="header-title">
           {panelMode !== "main" ? (

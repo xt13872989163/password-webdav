@@ -1,4 +1,5 @@
 import type { VaultEntry } from "@password-webdav/core";
+import { loadExtensionConfig, type ExtensionTheme } from "./extensionState";
 
 interface DetectedLoginCandidate {
   username: string;
@@ -127,15 +128,55 @@ function createButton(label: string, variant: "primary" | "secondary") {
   if (variant === "primary") {
     button.style.flex = "1";
     button.style.border = "0";
-    button.style.background = "#0f766e";
-    button.style.color = "#fff";
+    button.style.background = "var(--pwd-primary)";
+    button.style.color = "var(--pwd-primary-text)";
   } else {
-    button.style.border = "1px solid #d1d5db";
-    button.style.background = "#f8fafc";
-    button.style.color = "#111827";
+    button.style.border = "1px solid var(--pwd-border)";
+    button.style.background = "var(--pwd-button-bg)";
+    button.style.color = "var(--pwd-text)";
   }
 
   return button;
+}
+
+function promptThemeVars(theme: ExtensionTheme) {
+  if (theme === "night") {
+    return [
+      "--pwd-bg:#121e28",
+      "--pwd-border:#284456",
+      "--pwd-text:#e8f4f6",
+      "--pwd-muted:#9bb4be",
+      "--pwd-field-bg:#0c1720",
+      "--pwd-button-bg:#182936",
+      "--pwd-primary:#2dd4bf",
+      "--pwd-primary-text:#06221f",
+      "--pwd-shadow:0 18px 50px rgba(0,0,0,.42)",
+    ].join(";");
+  }
+  if (theme === "contrast") {
+    return [
+      "--pwd-bg:#ffffff",
+      "--pwd-border:#9fb6c4",
+      "--pwd-text:#061826",
+      "--pwd-muted:#365363",
+      "--pwd-field-bg:#ffffff",
+      "--pwd-button-bg:#ffffff",
+      "--pwd-primary:#0369a1",
+      "--pwd-primary-text:#ffffff",
+      "--pwd-shadow:0 18px 50px rgba(6,24,38,.2)",
+    ].join(";");
+  }
+  return [
+    "--pwd-bg:#ffffff",
+    "--pwd-border:#cbd5e1",
+    "--pwd-text:#111827",
+    "--pwd-muted:#4b5563",
+    "--pwd-field-bg:#ffffff",
+    "--pwd-button-bg:#f8fafc",
+    "--pwd-primary:#0f766e",
+    "--pwd-primary-text:#ffffff",
+    "--pwd-shadow:0 18px 50px rgba(15,23,42,.18)",
+  ].join(";");
 }
 
 async function showSavePrompt() {
@@ -152,6 +193,9 @@ async function showSavePrompt() {
     type: "password-webdav.get-detected-login-folder-options",
     entry: candidate,
   })) || { folders: [], defaultFolder: "", defaultTitle: "" };
+  const promptTheme = await loadExtensionConfig()
+    .then((config) => config.theme)
+    .catch(() => "fresh" as ExtensionTheme);
 
   if (promptEl) {
     promptLoading = false;
@@ -160,18 +204,19 @@ async function showSavePrompt() {
 
   promptEl = document.createElement("div");
   promptEl.style.cssText = [
+    promptThemeVars(promptTheme),
     "position:fixed",
     "right:18px",
     "bottom:18px",
     "z-index:2147483647",
     "width:320px",
     "padding:14px",
-    "border:1px solid #cbd5e1",
+    "border:1px solid var(--pwd-border)",
     "border-radius:8px",
-    "background:#fff",
-    "box-shadow:0 18px 50px rgba(15,23,42,.18)",
+    "background:var(--pwd-bg)",
+    "box-shadow:var(--pwd-shadow)",
     "font:14px system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",
-    "color:#111827",
+    "color:var(--pwd-text)",
   ].join(";");
 
   const title = document.createElement("div");
@@ -180,26 +225,26 @@ async function showSavePrompt() {
   appendText(title, "保存到 Password WebDAV？");
 
   const account = document.createElement("div");
-  account.style.cssText = "font-size:13px;font-weight:800;color:#1f2937;margin-bottom:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap";
+  account.style.cssText = "font-size:13px;font-weight:800;color:var(--pwd-text);margin-bottom:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap";
   appendText(account, candidate.username || location.hostname);
 
   const titleField = document.createElement("label");
-  titleField.style.cssText = "display:flex;flex-direction:column;gap:6px;font-size:12px;color:#4b5563;margin-bottom:12px";
+  titleField.style.cssText = "display:flex;flex-direction:column;gap:6px;font-size:12px;color:var(--pwd-muted);margin-bottom:12px";
   appendText(titleField, "标题");
 
   const titleInput = document.createElement("input");
   titleInput.type = "text";
   titleInput.placeholder = "例如 GitHub";
   titleInput.value = folderOptions.defaultTitle || candidate.title || location.hostname;
-  titleInput.style.cssText = "height:34px;border:1px solid #cbd5e1;border-radius:6px;padding:0 10px;background:#fff;color:#111827;font-weight:800";
+  titleInput.style.cssText = "height:34px;border:1px solid var(--pwd-border);border-radius:6px;padding:0 10px;background:var(--pwd-field-bg);color:var(--pwd-text);font-weight:800";
   titleField.appendChild(titleInput);
 
   const folderField = document.createElement("label");
-  folderField.style.cssText = "display:flex;flex-direction:column;gap:6px;font-size:12px;color:#4b5563;margin-bottom:12px";
+  folderField.style.cssText = "display:flex;flex-direction:column;gap:6px;font-size:12px;color:var(--pwd-muted);margin-bottom:12px";
   appendText(folderField, "文件夹");
 
   const folderSelect = document.createElement("select");
-  folderSelect.style.cssText = "height:34px;border:1px solid #cbd5e1;border-radius:6px;padding:0 10px;background:#fff;color:#111827;font-weight:800";
+  folderSelect.style.cssText = "height:34px;border:1px solid var(--pwd-border);border-radius:6px;padding:0 10px;background:var(--pwd-field-bg);color:var(--pwd-text);font-weight:800";
 
   const rootOption = document.createElement("option");
   rootOption.value = "";
@@ -225,7 +270,7 @@ async function showSavePrompt() {
   actions.append(saveButton, dismissButton);
 
   const status = document.createElement("div");
-  status.style.cssText = "font-size:12px;color:#4b5563;margin-top:8px";
+  status.style.cssText = "font-size:12px;color:var(--pwd-muted);margin-top:8px";
 
   promptEl.append(title, account, titleField, folderField, actions, status);
 

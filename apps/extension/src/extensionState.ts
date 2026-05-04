@@ -4,22 +4,42 @@ const CONFIG_KEY = "password-webdav.extension.config";
 const VAULT_KEY = "password-webdav.extension.vault";
 const MASTER_PASSWORD_KEY = "password-webdav.extension.master-password";
 
-export const DEFAULT_EXTENSION_CONFIG: WebDavConfig = {
+export type ExtensionTheme = "fresh" | "night" | "contrast";
+export type ExtensionConfig = WebDavConfig & {
+  theme: ExtensionTheme;
+};
+
+export const EXTENSION_THEMES: Array<{ value: ExtensionTheme; label: string }> = [
+  { value: "fresh", label: "清爽" },
+  { value: "night", label: "夜间" },
+  { value: "contrast", label: "高对比" },
+];
+
+export const DEFAULT_EXTENSION_CONFIG: ExtensionConfig = {
   baseUrl: "",
   username: "",
   password: "",
   vaultPath: normalizeStoredVaultPath("password-vault.json"),
+  theme: "fresh",
 };
 
-export async function loadExtensionConfig(): Promise<WebDavConfig> {
-  const result = await chrome.storage.local.get(CONFIG_KEY);
-  const next = { ...DEFAULT_EXTENSION_CONFIG, ...(result[CONFIG_KEY] as WebDavConfig | undefined) };
-  return { ...next, vaultPath: normalizeStoredVaultPath(next.vaultPath) };
+function normalizeTheme(value: unknown): ExtensionTheme {
+  return value === "night" || value === "contrast" ? value : "fresh";
 }
 
-export async function saveExtensionConfig(config: WebDavConfig) {
+export async function loadExtensionConfig(): Promise<ExtensionConfig> {
+  const result = await chrome.storage.local.get(CONFIG_KEY);
+  const next = { ...DEFAULT_EXTENSION_CONFIG, ...(result[CONFIG_KEY] as Partial<ExtensionConfig> | undefined) };
+  return { ...next, vaultPath: normalizeStoredVaultPath(next.vaultPath), theme: normalizeTheme(next.theme) };
+}
+
+export async function saveExtensionConfig(config: ExtensionConfig) {
   await chrome.storage.local.set({
-    [CONFIG_KEY]: { ...config, vaultPath: normalizeStoredVaultPath(config.vaultPath) },
+    [CONFIG_KEY]: {
+      ...config,
+      vaultPath: normalizeStoredVaultPath(config.vaultPath),
+      theme: normalizeTheme(config.theme),
+    },
   });
 }
 
