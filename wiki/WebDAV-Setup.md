@@ -16,19 +16,25 @@ Nextcloud 示例：
 https://example.com/remote.php/dav/files/your-user/
 ```
 
-Vault 文件路径示例：
+Vault 子路径示例：
 
 ```text
-PasswordWebDAV/password-vault.json
+password-vault.json
 ```
 
 如果你想放在子目录：
 
 ```text
-passwords/password-vault.json
+work/password-vault.json
 ```
 
-插件保存时会自动用 WebDAV `MKCOL` 创建 `passwords` 这样的父目录。如果你的 WebDAV 服务不支持 `MKCOL`，请手动创建目录后再保存。
+扩展会把这些子路径固定保存到 `PasswordWebDAV/` 根目录下面，例如最终路径会是：
+
+```text
+PasswordWebDAV/work/password-vault.json
+```
+
+插件保存时会自动用 WebDAV `MKCOL` 创建中间目录。如果你的 WebDAV 服务不支持 `MKCOL`，请手动创建目录后再保存。
 
 ## 用户名和密码
 

@@ -1,4 +1,4 @@
-import type { PlainVault, WebDavConfig } from "@password-webdav/core";
+import { normalizeStoredVaultPath, vaultSubpathFromStoredPath, type PlainVault, type WebDavConfig } from "@password-webdav/core";
 
 const CONFIG_KEY = "password-webdav.extension.config";
 const VAULT_KEY = "password-webdav.extension.vault";
@@ -7,16 +7,23 @@ export const DEFAULT_EXTENSION_CONFIG: WebDavConfig = {
   baseUrl: "",
   username: "",
   password: "",
-  vaultPath: "PasswordWebDAV/password-vault.json",
+  vaultPath: normalizeStoredVaultPath("password-vault.json"),
 };
 
 export async function loadExtensionConfig(): Promise<WebDavConfig> {
   const result = await chrome.storage.local.get(CONFIG_KEY);
-  return { ...DEFAULT_EXTENSION_CONFIG, ...(result[CONFIG_KEY] as WebDavConfig | undefined) };
+  const next = { ...DEFAULT_EXTENSION_CONFIG, ...(result[CONFIG_KEY] as WebDavConfig | undefined) };
+  return { ...next, vaultPath: normalizeStoredVaultPath(next.vaultPath) };
 }
 
 export async function saveExtensionConfig(config: WebDavConfig) {
-  await chrome.storage.local.set({ [CONFIG_KEY]: config });
+  await chrome.storage.local.set({
+    [CONFIG_KEY]: { ...config, vaultPath: normalizeStoredVaultPath(config.vaultPath) },
+  });
+}
+
+export function getExtensionVaultSubpath(config: WebDavConfig) {
+  return vaultSubpathFromStoredPath(config.vaultPath);
 }
 
 export async function loadUnlockedVault(): Promise<PlainVault | null> {

@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { loadVaultFile, saveVaultFile } from "./webdav";
+import {
+  loadVaultFile,
+  normalizeStoredVaultPath,
+  normalizeVaultSubpath,
+  saveVaultFile,
+  vaultSubpathFromStoredPath,
+} from "./webdav";
 import type { EncryptedVaultFile, WebDavConfig } from "./types";
 
 const config: WebDavConfig = {
@@ -59,15 +65,16 @@ describe("webdav", () => {
 
     await saveVaultFile(config, file);
 
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
     expect(fetchMock.mock.calls.map(([url, init]) => [url, init?.method])).toEqual([
-      ["https://example.com/dav/passwords/", "MKCOL"],
-      ["https://example.com/dav/passwords/private/", "MKCOL"],
-      ["https://example.com/dav/passwords/private/password-vault.json", "PUT"],
+      ["https://example.com/dav/PasswordWebDAV/", "MKCOL"],
+      ["https://example.com/dav/PasswordWebDAV/passwords/", "MKCOL"],
+      ["https://example.com/dav/PasswordWebDAV/passwords/private/", "MKCOL"],
+      ["https://example.com/dav/PasswordWebDAV/passwords/private/password-vault.json", "PUT"],
     ]);
   });
 
-  it("places jianguoyun root vaults under a provider folder", async () => {
+  it("keeps PasswordWebDAV as a fixed root folder for all providers", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       status: 201,
@@ -90,5 +97,11 @@ describe("webdav", () => {
       ["https://dav.jianguoyun.com/dav/PasswordWebDAV/", "MKCOL"],
       ["https://dav.jianguoyun.com/dav/PasswordWebDAV/password-vault.json", "PUT"],
     ]);
+  });
+
+  it("normalizes user-entered vault subpaths", () => {
+    expect(normalizeVaultSubpath("PasswordWebDAV/work/password-vault.json")).toBe("work/password-vault.json");
+    expect(normalizeStoredVaultPath("work/password-vault.json")).toBe("PasswordWebDAV/work/password-vault.json");
+    expect(vaultSubpathFromStoredPath("PasswordWebDAV/password-vault.json")).toBe("password-vault.json");
   });
 });

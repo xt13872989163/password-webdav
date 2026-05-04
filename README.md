@@ -43,7 +43,7 @@ npm run dev:extension
 ## 使用方式
 
 1. 点击 Chrome 工具栏里的 Password WebDAV 图标。
-2. 填写 WebDAV 根地址、用户名、密码或应用密码、vault 文件路径。
+2. 填写 WebDAV 根地址、用户名、密码或应用密码、vault 子路径。
 3. 输入主密码。
 4. 点击“解锁或创建”。
 5. 如果 WebDAV 上没有 vault，插件会自动创建一个加密 vault。
@@ -52,6 +52,7 @@ npm run dev:extension
 8. 在网站登录时，插件会识别标准登录表单；登录页跳转后右下角会提示“保存到 Password WebDAV？”，点击“保存”才会写入 WebDAV。
 
 自动保存提示需要先解锁插件。插件不会静默保存密码，也不会保存主密码；主密码只在当前扩展后台内存中用于本次会话加密。
+`PasswordWebDAV/` 是固定根目录，设置里只填写它后面的子路径。
 
 ## 安全模型
 

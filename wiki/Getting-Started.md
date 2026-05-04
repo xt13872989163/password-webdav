@@ -34,7 +34,7 @@ apps/extension/dist
 2. 填写 WebDAV 根地址，例如 `https://dav.jianguoyun.com/dav/`。
 3. 填写 WebDAV 用户名。
 4. 填写 WebDAV 密码或应用密码。
-5. 填写 vault 文件路径，例如 `PasswordWebDAV/password-vault.json`。也可以使用其他路径，比如 `passwords/password-vault.json`。
+5. 填写 vault 子路径，例如 `password-vault.json` 或 `work/password-vault.json`。扩展会固定保存到 `PasswordWebDAV/` 目录下。
 6. 输入主密码。
 7. 点击“解锁或创建”。
 
@@ -51,6 +51,7 @@ apps/extension/dist
 - 点击“填充”把账号和密码填入当前登录页。
 - 点击锁图标清空当前会话里的解锁状态。
 - 在左侧“文件夹”区域输入 `工作/GitHub` 这样的路径并点击创建，就能建立子文件夹；编辑时也可以直接修改条目的“文件夹”字段。
+- 新建条目时，标题、网址、用户名和文件夹会优先提示当前网站已有数据；输入精确匹配的账号时会自动带出已保存密码。
 
 ## 6. 登录后提示保存
 

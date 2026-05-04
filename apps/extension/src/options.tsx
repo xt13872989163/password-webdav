@@ -1,7 +1,7 @@
 import { createRoot } from "react-dom/client";
 import { useEffect, useState } from "react";
-import { DEFAULT_EXTENSION_CONFIG, loadExtensionConfig, saveExtensionConfig } from "./extensionState";
-import type { WebDavConfig } from "@password-webdav/core";
+import { DEFAULT_EXTENSION_CONFIG, getExtensionVaultSubpath, loadExtensionConfig, saveExtensionConfig } from "./extensionState";
+import { normalizeStoredVaultPath, VAULT_ROOT_FOLDER, type WebDavConfig } from "@password-webdav/core";
 import "./popup.css";
 
 function OptionsApp() {
@@ -11,6 +11,8 @@ function OptionsApp() {
   useEffect(() => {
     void loadExtensionConfig().then(setSettings);
   }, []);
+
+  const vaultSubpath = getExtensionVaultSubpath(settings);
 
   async function handleSave() {
     await saveExtensionConfig(settings);
@@ -34,9 +36,16 @@ function OptionsApp() {
         <input type="password" value={settings.password} onChange={(event) => setSettings({ ...settings, password: event.target.value })} />
       </label>
       <label>
-        <span>Vault 文件路径</span>
-        <input value={settings.vaultPath} onChange={(event) => setSettings({ ...settings, vaultPath: event.target.value })} />
+        <span>Vault 子路径</span>
+        <div className="path-input">
+          <span className="path-prefix">{VAULT_ROOT_FOLDER}/</span>
+          <input
+            value={vaultSubpath}
+            onChange={(event) => setSettings({ ...settings, vaultPath: normalizeStoredVaultPath(event.target.value) })}
+          />
+        </div>
       </label>
+      <p className="field-help">根目录固定为 `PasswordWebDAV/`，这里只需要填写里面的子路径。</p>
       <button className="primary" onClick={handleSave}>保存设置</button>
       {status && <p className="status">{status}</p>}
     </main>

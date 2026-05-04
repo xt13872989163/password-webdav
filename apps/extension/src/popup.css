@@ -168,6 +168,36 @@ textarea {
   background: #fff;
 }
 
+.path-input {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 0;
+  width: 100%;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.path-prefix {
+  padding: 9px 10px;
+  background: #eef2f7;
+  color: #6b7280;
+  border-right: 1px solid #dbe1ea;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.path-input input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  border-radius: 0;
+  padding: 9px 10px;
+  background: transparent;
+}
+
 .folder-list {
   display: flex;
   flex-direction: column;
@@ -252,6 +282,29 @@ textarea {
 
 .entry-folder {
   color: #0f766e;
+}
+
+.suggestion-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: -2px 0 8px;
+}
+
+.suggestion-chip {
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid #dbe1ea;
+  border-radius: 999px;
+  background: #fff;
+  color: #374151;
+  cursor: pointer;
+}
+
+.field-help {
+  margin: 0 0 10px;
+  font-size: 12px;
+  color: #6b7280;
 }
 
 .entry-buttons {

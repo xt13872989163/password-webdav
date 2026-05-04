@@ -2,37 +2,56 @@ import type { EncryptedVaultFile, WebDavConfig } from "./types";
 import { decodeEncryptedVaultFile, encodeJson } from "./crypto";
 
 export const DEFAULT_VAULT_FILENAME = "password-vault.json";
-const DEFAULT_PROVIDER_FOLDER = "PasswordWebDAV";
+export const VAULT_ROOT_FOLDER = "PasswordWebDAV";
 
 function trimLeadingSlashes(value: string) {
   return value.replace(/^\/+/, "");
+}
+
+function trimTrailingSlashes(value: string) {
+  return value.replace(/\/+$/, "");
 }
 
 function ensureTrailingSlash(value: string) {
   return value.endsWith("/") ? value : `${value}/`;
 }
 
-export function resolveVaultUrl(config: WebDavConfig) {
-  const base = new URL(ensureTrailingSlash(config.baseUrl));
-  return new URL(normalizeVaultPath(config, base), base).toString();
+export function normalizeVaultSubpath(value: string) {
+  const trimmed = trimLeadingSlashes(value || "");
+  const withoutRoot = trimmed.toLowerCase().startsWith(`${VAULT_ROOT_FOLDER.toLowerCase()}/`)
+    ? trimmed.slice(VAULT_ROOT_FOLDER.length + 1)
+    : trimmed.toLowerCase() === VAULT_ROOT_FOLDER.toLowerCase()
+      ? ""
+      : trimmed;
+  const normalized = withoutRoot
+    .split("/")
+    .map((part) => trimTrailingSlashes(part.trim()))
+    .filter(Boolean)
+    .join("/");
+
+  return normalized || DEFAULT_VAULT_FILENAME;
 }
 
-function normalizeVaultPath(config: WebDavConfig, base: URL) {
-  const rawPath = trimLeadingSlashes(config.vaultPath || DEFAULT_VAULT_FILENAME);
-  if (rawPath.includes("/")) {
-    return rawPath;
-  }
+export function normalizeStoredVaultPath(value: string) {
+  return `${VAULT_ROOT_FOLDER}/${normalizeVaultSubpath(value)}`;
+}
 
-  if (base.hostname.toLowerCase().endsWith("jianguoyun.com")) {
-    return `${DEFAULT_PROVIDER_FOLDER}/${rawPath}`;
-  }
+export function vaultSubpathFromStoredPath(value: string) {
+  return normalizeVaultSubpath(value);
+}
 
-  return rawPath;
+export function resolveVaultUrl(config: WebDavConfig) {
+  const base = new URL(ensureTrailingSlash(config.baseUrl));
+  return new URL(normalizeVaultPath(config), base).toString();
+}
+
+export function normalizeVaultPath(config: WebDavConfig) {
+  return normalizeStoredVaultPath(config.vaultPath || DEFAULT_VAULT_FILENAME);
 }
 
 function resolveVaultParentUrls(config: WebDavConfig) {
   const base = new URL(ensureTrailingSlash(config.baseUrl));
-  const parts = normalizeVaultPath(config, base)
+  const parts = normalizeVaultPath(config)
     .split("/")
     .filter(Boolean);
   if (parts.length <= 1) {
