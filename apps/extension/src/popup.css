@@ -407,6 +407,7 @@ textarea:focus-visible {
 }
 
 .folder-row {
+  position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 6px;
@@ -418,6 +419,23 @@ textarea:focus-visible {
   transition:
     border-color 0.15s ease,
     background-color 0.15s ease;
+}
+
+.folder-row.tree-child::before {
+  content: "";
+  position: absolute;
+  left: 18px;
+  top: -7px;
+  bottom: 50%;
+  width: 10px;
+  border-left: 1px solid #cfe0e6;
+  border-bottom: 1px solid #cfe0e6;
+  border-bottom-left-radius: 6px;
+  pointer-events: none;
+}
+
+.folder-row.tree-root {
+  font-weight: 800;
 }
 
 .folder-row.selected,
@@ -486,7 +504,7 @@ textarea:focus-visible {
   border: 1px solid var(--line);
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.88);
-  padding: 9px;
+  padding: 7px;
   transition:
     border-color 0.15s ease,
     background-color 0.15s ease;
@@ -495,11 +513,20 @@ textarea:focus-visible {
 .entry-top {
   display: grid;
   grid-template-columns: 16px minmax(0, 1fr) auto;
-  gap: 8px;
+  gap: 6px;
   align-items: start;
 }
 
 .entry-info {
+  min-width: 0;
+}
+
+.entry-credentials {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin-top: 3px;
   min-width: 0;
 }
 
@@ -529,9 +556,12 @@ textarea:focus-visible {
 }
 
 .entry-username {
-  margin: 4px 0 0;
-  display: block;
-  width: 100%;
+  flex: 1 1 90px;
+  min-width: 72px;
+  min-height: 26px;
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
   padding: 0;
   border: 0;
   background: transparent;
@@ -556,7 +586,7 @@ textarea:focus-visible {
   display: flex;
   flex-wrap: wrap;
   gap: 5px;
-  margin: 8px 0 0 22px;
+  margin: 5px 0 0 22px;
 }
 
 .chip {
@@ -575,22 +605,24 @@ textarea:focus-visible {
 }
 
 .secret-row {
+  flex: 2 1 190px;
+  min-width: 180px;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 6px;
-  margin: 8px 0 0 22px;
+  margin: 0;
 }
 
 .secret-value {
   appearance: none;
   font: inherit;
   width: 100%;
-  min-height: 28px;
+  min-height: 26px;
   display: inline-flex;
   align-items: center;
   justify-content: flex-start;
-  padding: 0 10px;
+  padding: 0 8px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #f8fbfd;

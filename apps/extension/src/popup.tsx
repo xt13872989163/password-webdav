@@ -838,16 +838,51 @@ function PopupApp() {
               <strong>{entry.title || "未命名"}</strong>
               <span className="entry-host">{currentHost(entry.url) || "无网址"}</span>
             </div>
-            <button
-              type="button"
-              className="entry-copy-line entry-username"
-              title={`点击复制${accountCopyLabel}`}
-              onClick={() => {
-                void copyToClipboard(accountCopyValue || "", accountCopyLabel);
-              }}
-            >
-              {accountText}
-            </button>
+            <div className="entry-credentials">
+              <button
+                type="button"
+                className="entry-copy-line entry-username"
+                title={`点击复制${accountCopyLabel}`}
+                onClick={() => {
+                  void copyToClipboard(accountCopyValue || "", accountCopyLabel);
+                }}
+              >
+                {accountText}
+              </button>
+
+              <div className="secret-row">
+                <button
+                  type="button"
+                  className={`secret-value${revealed ? " revealed" : ""}`}
+                  title="点击复制密码"
+                  onClick={() => {
+                    void copyToClipboard(entry.password, "密码");
+                  }}
+                >
+                  {revealed ? entry.password : "••••••••••••"}
+                </button>
+                <button
+                  type="button"
+                  className="text-button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setRevealedEntryId((current) => (current === entry.id ? null : entry.id));
+                  }}
+                >
+                  {revealed ? (
+                    <>
+                      <EyeOff size={14} />
+                      隐藏
+                    </>
+                  ) : (
+                    <>
+                      <Eye size={14} />
+                      显示
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
           </div>
           <div className="entry-actions">
             <button
@@ -864,69 +899,37 @@ function PopupApp() {
           </div>
         </div>
 
-        <div className="entry-meta">
-          {showFolderChip && entryFolder(entry) && <span className="chip">{entryFolder(entry)}</span>}
-          {entry.tags.slice(0, 2).map((tag) => (
-            <span key={`${entry.id}-${tag}`} className="chip">
-              {tag}
-            </span>
-          ))}
-          <span className="chip chip-muted">{new Date(entry.updatedAt).toLocaleDateString("zh-CN")}</span>
-        </div>
+        {(showFolderChip && entryFolder(entry)) || entry.tags.length > 0 ? (
+          <div className="entry-meta">
+            {showFolderChip && entryFolder(entry) && <span className="chip">{entryFolder(entry)}</span>}
+            {entry.tags.slice(0, 2).map((tag) => (
+              <span key={`${entry.id}-${tag}`} className="chip">
+                {tag}
+              </span>
+            ))}
+          </div>
+        ) : null}
 
-        <div className="secret-row">
-          <button
-            type="button"
-            className={`secret-value${revealed ? " revealed" : ""}`}
-            title="点击复制密码"
-            onClick={() => {
-              void copyToClipboard(entry.password, "密码");
-            }}
-          >
-            {revealed ? entry.password : "••••••••••••"}
-          </button>
-          <button
-            type="button"
-            className="text-button"
-            onClick={(event) => {
-              event.stopPropagation();
-              setRevealedEntryId((current) => (current === entry.id ? null : entry.id));
-            }}
-          >
-            {revealed ? (
-              <>
-                <EyeOff size={14} />
-                隐藏
-              </>
-            ) : (
-              <>
-                <Eye size={14} />
-                显示
-              </>
-            )}
-          </button>
-        </div>
       </article>
     );
   }
 
-  function renderFolderRow(folder: string) {
+  function renderFolderRow(folder: string, visualDepth?: number) {
     const isSpecial = folder === ALL_FOLDERS || folder === UNCATEGORIZED_FOLDER;
     const selected = activeFolder === folder;
     const canDrop = canDropOnFolder(folder);
     const isDropTarget = dropFolder === folder && canDrop;
     const depth =
-      folder === ALL_FOLDERS || folder === UNCATEGORIZED_FOLDER
-        ? 0
-        : Math.max(0, folder.split("/").length - 1);
+      visualDepth ??
+      (folder === ALL_FOLDERS ? 0 : folder === UNCATEGORIZED_FOLDER ? 1 : Math.max(1, folder.split("/").length));
     const normalized = isSpecial ? folder : normalizeFolderPath(folder);
     const count = entryCountForFolder(folder);
 
     return (
       <div
         key={folder}
-        className={`folder-row${selected ? " selected" : ""}${isDropTarget ? " drag-over" : ""}`}
-        style={{ paddingLeft: `${10 + depth * 14}px` }}
+        className={`folder-row${depth > 0 ? " tree-child" : " tree-root"}${selected ? " selected" : ""}${isDropTarget ? " drag-over" : ""}`}
+        style={{ paddingLeft: `${10 + depth * 16}px` }}
         draggable={!isSpecial}
         onDragStart={() => {
           if (!isSpecial) setDragItem({ type: "folder", folder: normalized });
@@ -1119,9 +1122,9 @@ function PopupApp() {
           </div>
 
           <div className="folder-list">
-            {renderFolderRow(ALL_FOLDERS)}
-            {renderFolderRow(UNCATEGORIZED_FOLDER)}
-            {folderOptions.map((folder) => renderFolderRow(folder))}
+            {renderFolderRow(ALL_FOLDERS, 0)}
+            {renderFolderRow(UNCATEGORIZED_FOLDER, 1)}
+            {folderOptions.map((folder) => renderFolderRow(folder, folder.split("/").length))}
           </div>
         </aside>
 
