@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { saveVaultFile } from "./webdav";
+import { loadVaultFile, saveVaultFile } from "./webdav";
 import type { EncryptedVaultFile, WebDavConfig } from "./types";
 
 const config: WebDavConfig = {
@@ -36,6 +36,18 @@ afterEach(() => {
 });
 
 describe("webdav", () => {
+  it("treats missing WebDAV parent paths as an empty vault location", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 409,
+      statusText: "Conflict",
+      headers: new Headers(),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(loadVaultFile(config)).resolves.toBeNull();
+  });
+
   it("creates nested vault directories before saving the vault file", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,

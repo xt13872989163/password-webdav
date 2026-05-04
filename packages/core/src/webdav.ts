@@ -84,7 +84,7 @@ export async function loadVaultFile(config: WebDavConfig) {
     headers: requestHeaders(config),
     cache: "no-store",
   });
-  if (response.status === 404) {
+  if (response.status === 404 || response.status === 409) {
     return null;
   }
   if (!response.ok) {
