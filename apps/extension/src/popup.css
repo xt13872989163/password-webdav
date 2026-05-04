@@ -1,3 +1,9 @@
+:root,
+html,
+body {
+  height: 100%;
+}
+
 :root {
   color-scheme: light;
   font-family: Inter, "Microsoft YaHei", ui-sans-serif, system-ui, sans-serif;
@@ -175,7 +181,7 @@
 body {
   margin: 0;
   background: transparent;
-  overflow-x: hidden;
+  overflow: hidden;
 }
 
 button,
@@ -215,15 +221,14 @@ textarea:focus-visible {
 }
 
 .popup-shell {
-  height: 600px;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .unlock-shell {
   width: 520px;
-  max-height: 600px;
-  overflow: hidden;
+  height: min(600px, calc(100vh - 16px));
 }
 
 .unlock-panel {
@@ -292,8 +297,7 @@ textarea:focus-visible {
 
 .manager-shell {
   width: 520px;
-  height: 680px;
-  overflow: hidden;
+  height: min(680px, calc(100vh - 16px));
 }
 
 .options-shell {
@@ -1092,6 +1096,10 @@ textarea:focus-visible {
   font-size: 11px;
   line-height: 1.5;
   color: var(--muted);
+}
+
+.compact-hint {
+  margin-top: -2px;
 }
 
 .field-help code {

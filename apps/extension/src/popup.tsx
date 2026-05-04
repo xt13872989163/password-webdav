@@ -1411,37 +1411,9 @@ function PopupApp() {
               <input value={vaultSubpath} onChange={(event) => updateVaultSubpath(event.target.value)} />
             </div>
           </label>
-          <section className="settings-subsection">
-            <div className="panel-header compact">
-              <div>
-                <strong>{text.uiSettings}</strong>
-                <span>{text.uiSettingsHint}</span>
-              </div>
-            </div>
-            <div className="theme-picker" role="radiogroup" aria-label={text.theme}>
-              {EXTENSION_THEMES.map((theme) => (
-                <button
-                  key={theme.value}
-                  type="button"
-                  className={`theme-option${settings.theme === theme.value ? " active" : ""}`}
-                  onClick={() => setSettings({ ...settings, theme: theme.value })}
-                >
-                  <span className={`theme-swatch theme-swatch-${theme.value}`} />
-                  {getThemeLabel(theme.value, settings.language)}
-                </button>
-              ))}
-            </div>
-            <label className="field compact-field">
-              <span>{text.language}</span>
-              <select value={settings.language} onChange={(event) => setSettings({ ...settings, language: event.target.value as ExtensionConfig["language"] })}>
-                {EXTENSION_LANGUAGES.map((language) => (
-                  <option key={language.value} value={language.value}>
-                    {language.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </section>
+          <p className="field-help compact-hint">
+            {text.uiSettingsHint}
+          </p>
           <div className="action-row">
             <button type="button" className="primary-button compact" onClick={() => void handleSaveSettings()}>
               <Save size={15} />
