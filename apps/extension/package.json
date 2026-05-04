@@ -1,0 +1,14 @@
+{
+  "name": "@password-webdav/extension",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite build --watch --mode development",
+    "build": "vite build",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@password-webdav/core": "0.1.0"
+  }
+}

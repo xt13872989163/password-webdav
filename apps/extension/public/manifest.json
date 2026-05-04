@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "Password WebDAV",
+  "version": "0.1.0",
+  "description": "A WebDAV-backed password manager for Chrome and the web.",
+  "action": {
+    "default_title": "Password WebDAV",
+    "default_popup": "popup.html"
+  },
+  "options_page": "options.html",
+  "permissions": ["storage", "tabs", "activeTab"],
+  "host_permissions": ["<all_urls>"],
+  "background": {
+    "service_worker": "assets/background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["assets/contentScript.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
+

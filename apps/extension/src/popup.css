@@ -1,0 +1,294 @@
+:root {
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  color: #111827;
+  background: #f7f8fb;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+}
+
+.popup-shell,
+.options-shell {
+  width: 390px;
+  padding: 14px;
+}
+
+.manager-shell {
+  width: 720px;
+  max-height: 620px;
+  overflow: auto;
+}
+
+.options-shell {
+  width: min(640px, 100%);
+}
+
+.popup-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.popup-header strong {
+  flex: 1;
+}
+
+.ghost-icon,
+.ghost-text,
+.secondary,
+.primary,
+.fill-button,
+.entry-buttons button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-radius: 6px;
+  border: 1px solid #d6e0d0;
+}
+
+.ghost-icon,
+.entry-buttons button {
+  width: 32px;
+  height: 32px;
+  background: #eef2f7;
+}
+
+.ghost-icon:disabled,
+.primary:disabled,
+.danger:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.ghost-text,
+.secondary,
+.primary,
+.fill-button {
+  min-height: 36px;
+  padding: 0 12px;
+  background: #eef2f7;
+  color: #1f2937;
+}
+
+.primary {
+  background: #0f766e;
+  color: #fff;
+  width: 100%;
+  margin-top: 10px;
+}
+
+.secondary {
+  width: 100%;
+  margin-top: 8px;
+}
+
+.meta-line,
+.popup-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.meta-line {
+  margin-bottom: 10px;
+  font-size: 12px;
+  color: #5e6c60;
+}
+
+.search-input,
+.popup-shell label input,
+.options-shell label input,
+.popup-shell label textarea {
+  width: 100%;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  padding: 9px 10px;
+  background: #fff;
+}
+
+.search-input {
+  margin-bottom: 10px;
+}
+
+.toolbar-buttons {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.split-pane {
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) minmax(280px, 1.1fr);
+  gap: 10px;
+  min-height: 360px;
+}
+
+.popup-shell label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.entry-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 460px;
+  overflow: auto;
+}
+
+.entry-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border: 1px solid #dbe1ea;
+  border-radius: 8px;
+  background: #fff;
+  padding: 10px;
+  cursor: pointer;
+}
+
+.entry-card.selected {
+  border-color: #0f766e;
+  box-shadow: 0 0 0 2px rgba(15, 118, 110, 0.12);
+}
+
+.entry-card strong,
+.entry-card p {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.entry-card p {
+  font-size: 12px;
+  color: #6b7280;
+  margin-top: 3px;
+}
+
+.entry-buttons {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.fill-button {
+  background: #0f766e;
+  color: #fff;
+}
+
+.editor-box {
+  border: 1px solid #dbe1ea;
+  border-radius: 8px;
+  background: #fff;
+  padding: 12px;
+}
+
+.editor-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.editor-box label span,
+.popup-shell label span {
+  font-size: 12px;
+  font-weight: 700;
+  color: #374151;
+}
+
+.inline-input {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 34px;
+  gap: 6px;
+}
+
+.inline-input button {
+  border: 1px solid #d6e0d0;
+  border-radius: 6px;
+  background: #eef2f7;
+}
+
+.editor-box textarea {
+  min-height: 72px;
+  resize: vertical;
+}
+
+.editor-actions {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+}
+
+.danger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 12px;
+  color: #991b1b;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+}
+
+.popup-footer {
+  margin-top: 10px;
+}
+
+.status {
+  margin: 10px 0 0;
+  font-size: 12px;
+  color: #4b5563;
+}
+
+.empty-hint {
+  margin: 16px 0 0;
+  text-align: center;
+  color: #6b7280;
+}
+
+.options-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.options-shell h1,
+.options-shell p {
+  margin: 0;
+}
+
+.options-shell h1 {
+  font-size: 22px;
+}
+
+.options-shell label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.options-shell label span {
+  font-size: 13px;
+  font-weight: 700;
+}
