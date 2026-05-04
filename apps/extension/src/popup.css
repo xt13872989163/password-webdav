@@ -25,7 +25,7 @@ textarea {
 }
 
 .manager-shell {
-  width: 720px;
+  width: 760px;
   max-height: 620px;
   overflow: auto;
 }
@@ -132,9 +132,76 @@ textarea {
 
 .split-pane {
   display: grid;
-  grid-template-columns: minmax(240px, 1fr) minmax(280px, 1.1fr);
+  grid-template-columns: minmax(160px, 180px) minmax(240px, 1fr) minmax(280px, 1.1fr);
   gap: 10px;
   min-height: 360px;
+}
+
+.folder-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.folder-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #374151;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.folder-create {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 32px;
+  gap: 6px;
+}
+
+.folder-create input {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  padding: 8px 10px;
+  background: #fff;
+}
+
+.folder-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 460px;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.folder-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+  min-height: 34px;
+  padding: 0 10px;
+  border: 1px solid #dbe1ea;
+  border-radius: 6px;
+  background: #fff;
+  color: #374151;
+  text-align: left;
+  cursor: pointer;
+}
+
+.folder-item span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.folder-item.selected {
+  border-color: #0f766e;
+  box-shadow: 0 0 0 2px rgba(15, 118, 110, 0.12);
 }
 
 .popup-shell label {
@@ -181,6 +248,10 @@ textarea {
   font-size: 12px;
   color: #6b7280;
   margin-top: 3px;
+}
+
+.entry-folder {
+  color: #0f766e;
 }
 
 .entry-buttons {

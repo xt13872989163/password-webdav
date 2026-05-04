@@ -33,6 +33,7 @@ export function createEmptyVault(): PlainVault {
     schemaVersion: VAULT_SCHEMA_VERSION,
     createdAt: now,
     updatedAt: now,
+    folders: [],
     entries: [],
   };
 }

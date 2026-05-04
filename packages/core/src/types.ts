@@ -4,6 +4,7 @@ export interface VaultEntry {
   username: string;
   password: string;
   url: string;
+  folder?: string;
   notes: string;
   tags: string[];
   createdAt: string;
@@ -14,6 +15,7 @@ export interface PlainVault {
   schemaVersion: 1;
   createdAt: string;
   updatedAt: string;
+  folders?: string[];
   entries: VaultEntry[];
 }
 
@@ -61,4 +63,3 @@ export interface VaultState {
   file: EncryptedVaultFile;
   vault: PlainVault;
 }
-

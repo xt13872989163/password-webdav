@@ -11,6 +11,7 @@
 
 - Chrome 插件创建或解锁加密 vault。
 - Chrome 插件新增、编辑、删除、搜索密码条目。
+- Chrome 插件创建文件夹和子文件夹，按路径分类条目。
 - Chrome 插件复制账号和密码。
 - Chrome 插件手动刷新 WebDAV vault。
 - Chrome 插件按当前页面域名排序候选密码。

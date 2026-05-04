@@ -41,10 +41,27 @@ WebDAV 文件大致长这样：
 }
 ```
 
+解密后的 vault 内容里才会有文件夹路径和条目，例如：
+
+```json
+{
+  "schemaVersion": 1,
+  "folders": ["工作", "工作/GitHub"],
+  "entries": [
+    {
+      "title": "GitHub",
+      "folder": "工作/GitHub",
+      "username": "user@example.com"
+    }
+  ]
+}
+```
+
 WebDAV 不保存：
 
 - 主密码
 - 明文网站密码
+- 明文文件夹和条目内容
 - 明文 vault key
 - 解锁后的密码库
 
@@ -81,5 +98,6 @@ WebDAV 不保存：
 当前版本是手动同步：
 
 - 保存条目时会加密并上传 WebDAV。
+- 创建文件夹时会把文件夹路径写入 vault，再加密上传 WebDAV。
 - 刷新按钮会从 WebDAV 重新读取 vault。
 - 当前没有冲突合并，多设备同时编辑时需要人为避免覆盖。

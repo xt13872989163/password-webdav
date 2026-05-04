@@ -84,6 +84,7 @@ function entryFromCandidate(candidate: DetectedLoginCandidate) {
     username: candidate.username || "",
     password: candidate.password,
     url: candidate.url,
+    folder: "",
     notes: "",
     tags: [],
     createdAt: now,

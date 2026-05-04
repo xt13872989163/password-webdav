@@ -2,6 +2,8 @@ import {
   Copy,
   Dices,
   Edit3,
+  Folder,
+  FolderPlus,
   KeyRound,
   Lock,
   Plus,
@@ -17,11 +19,16 @@ import {
   createEmptyVault,
   decryptVault,
   encryptVault,
+  entryFolder,
+  entryMatchesFolderTree,
   generatePassword,
   loadVaultFile,
+  mergeVaultFolders,
   nowIso,
+  normalizeFolderPath,
   saveVaultFile,
   sortEntriesForHost,
+  sortFolders,
   uuid,
   type PlainVault,
   type VaultEntry,
@@ -37,6 +44,20 @@ import {
 } from "./extensionState";
 import "./popup.css";
 
+const ALL_FOLDERS = "__all__";
+const UNCATEGORIZED_FOLDER = "__uncategorized__";
+
+function folderDisplayName(folder: string) {
+  const parts = folder.split("/").filter(Boolean);
+  return parts[parts.length - 1] || folder;
+}
+
+function folderFilterLabel(folder: string) {
+  if (folder === ALL_FOLDERS) return "全部";
+  if (folder === UNCATEGORIZED_FOLDER) return "未分类";
+  return folder;
+}
+
 function currentHost(value: string) {
   try {
     return new URL(value).hostname.replace(/^www\./, "");
@@ -50,7 +71,7 @@ async function getActiveTabUrl() {
   return tab?.url ?? "";
 }
 
-function createEntry(host = ""): VaultEntry {
+function createEntry(host = "", folder = ""): VaultEntry {
   const now = nowIso();
   return {
     id: uuid(),
@@ -58,6 +79,7 @@ function createEntry(host = ""): VaultEntry {
     username: "",
     password: generatePassword(),
     url: host ? `https://${host}` : "",
+    folder: normalizeFolderPath(folder),
     notes: "",
     tags: [],
     createdAt: now,
@@ -78,11 +100,12 @@ function textToTags(value: string) {
 
 function upsertEntry(vault: PlainVault, entry: VaultEntry): PlainVault {
   const now = nowIso();
-  const nextEntry = { ...entry, updatedAt: now };
+  const nextEntry = { ...entry, folder: normalizeFolderPath(entry.folder || ""), updatedAt: now };
   const exists = vault.entries.some((item) => item.id === entry.id);
   return {
     ...vault,
     updatedAt: now,
+    folders: mergeVaultFolders(vault, [nextEntry.folder || ""]),
     entries: exists
       ? vault.entries.map((item) => (item.id === entry.id ? nextEntry : item))
       : [nextEntry, ...vault.entries],
@@ -116,6 +139,8 @@ function PopupApp() {
   const [dirty, setDirty] = useState(false);
   const [query, setQuery] = useState("");
   const [tabUrl, setTabUrl] = useState("");
+  const [activeFolder, setActiveFolder] = useState(ALL_FOLDERS);
+  const [newFolderPath, setNewFolderPath] = useState("");
 
   useEffect(() => {
     void loadExtensionConfig().then(setSettings);
@@ -129,17 +154,27 @@ function PopupApp() {
   const host = useMemo(() => currentHost(tabUrl), [tabUrl]);
   const entries = useMemo(() => {
     const source = vault?.entries ?? [];
+    const visibleByFolder = source.filter((entry) => {
+      if (activeFolder === ALL_FOLDERS) return true;
+      if (activeFolder === UNCATEGORIZED_FOLDER) return !entryFolder(entry);
+      return entryMatchesFolderTree(entry, activeFolder);
+    });
     const needle = query.trim().toLowerCase();
     const filtered = needle
-      ? source.filter((entry) =>
-          [entry.title, entry.username, entry.url, entry.notes, ...entry.tags]
+      ? visibleByFolder.filter((entry) =>
+          [entry.title, entry.username, entry.url, entry.notes, entryFolder(entry), ...entry.tags]
             .join(" ")
             .toLowerCase()
             .includes(needle),
         )
-      : source;
+      : visibleByFolder;
     return sortEntriesForHost(filtered, host || query);
-  }, [host, query, vault]);
+  }, [activeFolder, host, query, vault]);
+
+  const folderOptions = useMemo(() => {
+    if (!vault) return [] as string[];
+    return sortFolders(mergeVaultFolders(vault, vault.entries.map(entryFolder)));
+  }, [vault]);
 
   async function persistVault(nextVault: PlainVault, nextStatus = "已同步到 WebDAV。") {
     const encrypted = await encryptVault(masterPassword, nextVault);
@@ -248,8 +283,35 @@ function PopupApp() {
     }
   }
 
+  async function handleCreateFolder() {
+    if (!vault) return;
+    const folder = normalizeFolderPath(newFolderPath);
+    if (!folder) {
+      setStatus("请填写文件夹路径，例如 工作/GitHub。");
+      return;
+    }
+
+    setBusy(true);
+    setStatus("正在创建文件夹...");
+    try {
+      const nextVault = {
+        ...vault,
+        updatedAt: nowIso(),
+        folders: mergeVaultFolders(vault, [folder]),
+      };
+      await persistVault(nextVault, `已创建文件夹：${folder}`);
+      setActiveFolder(folder);
+      setNewFolderPath("");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "创建文件夹失败。");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   function handleAdd() {
-    const entry = createEntry(host);
+    const folder = activeFolder !== ALL_FOLDERS && activeFolder !== UNCATEGORIZED_FOLDER ? activeFolder : "";
+    const entry = createEntry(host, folder);
     setSelectedEntry(entry);
     setDirty(true);
     setStatus("已新建条目，填写后点击保存。");
@@ -338,7 +400,7 @@ function PopupApp() {
       </header>
 
       <div className="meta-line">
-        <span>{host || "当前页面无可识别域名"} · {vault.entries.length} 条</span>
+        <span>{host || "当前页面无可识别域名"} · {vault.entries.length} 条 · {folderFilterLabel(activeFolder)}</span>
         <div className="toolbar-buttons">
           <button className="ghost-icon" title="新增" onClick={handleAdd}>
             <Plus size={15} />
@@ -355,6 +417,56 @@ function PopupApp() {
       <input className="search-input" placeholder="搜索密码" value={query} onChange={(event) => setQuery(event.target.value)} />
 
       <div className="split-pane">
+        <aside className="folder-panel">
+          <div className="folder-title">
+            <Folder size={15} />
+            <strong>文件夹</strong>
+          </div>
+          <div className="folder-create">
+            <input
+              placeholder="例如 工作/GitHub"
+              value={newFolderPath}
+              onChange={(event) => setNewFolderPath(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  void handleCreateFolder();
+                }
+              }}
+            />
+            <button className="ghost-icon" title="创建文件夹" disabled={busy} onClick={handleCreateFolder}>
+              <FolderPlus size={15} />
+            </button>
+          </div>
+          <div className="folder-list">
+            <button
+              className={`folder-item ${activeFolder === ALL_FOLDERS ? "selected" : ""}`}
+              onClick={() => setActiveFolder(ALL_FOLDERS)}
+            >
+              <Folder size={14} />
+              <span>全部</span>
+            </button>
+            <button
+              className={`folder-item ${activeFolder === UNCATEGORIZED_FOLDER ? "selected" : ""}`}
+              onClick={() => setActiveFolder(UNCATEGORIZED_FOLDER)}
+            >
+              <Folder size={14} />
+              <span>未分类</span>
+            </button>
+            {folderOptions.map((folder) => (
+              <button
+                key={folder}
+                className={`folder-item ${activeFolder === folder ? "selected" : ""}`}
+                style={{ paddingLeft: `${10 + Math.max(0, folder.split("/").length - 1) * 14}px` }}
+                title={folder}
+                onClick={() => setActiveFolder(folder)}
+              >
+                <Folder size={14} />
+                <span>{folderDisplayName(folder)}</span>
+              </button>
+            ))}
+          </div>
+        </aside>
+
         <div className="entry-list">
           {entries.map((entry) => (
             <article
@@ -365,6 +477,7 @@ function PopupApp() {
               <div>
                 <strong>{entry.title || "未命名"}</strong>
                 <p>{entry.username || entry.url || "未填写账号"}</p>
+                {entryFolder(entry) && <p className="entry-folder">{entryFolder(entry)}</p>}
               </div>
               <div className="entry-buttons">
                 <button title="复制账号" onClick={(event) => {
@@ -433,6 +546,17 @@ function PopupApp() {
                     <Dices size={15} />
                   </button>
                 </div>
+              </label>
+              <label>
+                <span>文件夹</span>
+                <input
+                  placeholder="例如 工作/GitHub，留空为未分类"
+                  value={selectedEntry.folder || ""}
+                  onChange={(event) => {
+                    setSelectedEntry({ ...selectedEntry, folder: event.target.value });
+                    setDirty(true);
+                  }}
+                />
               </label>
               <label>
                 <span>标签</span>
