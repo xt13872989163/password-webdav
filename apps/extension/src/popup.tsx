@@ -1,13 +1,11 @@
 import {
   ArrowLeft,
-  Copy,
   Dices,
   Eye,
   EyeOff,
   Folder,
   FolderPlus,
   GripVertical,
-  KeyRound,
   Lock,
   Plus,
   RefreshCw,
@@ -668,19 +666,6 @@ function PopupApp() {
     setStatus("已新建条目，请在详情里补全并保存。");
   }
 
-  async function handleFill(entry: VaultEntry) {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (!tab?.id) {
-      setStatus("找不到当前标签页。");
-      return;
-    }
-    const response = await chrome.tabs.sendMessage(tab.id, {
-      type: "password-webdav.fill-entry",
-      entry,
-    });
-    setStatus(response?.message ?? "已填充。");
-  }
-
   async function copyToClipboard(value: string, label: string) {
     if (!value) {
       setStatus(`${label}为空。`);
@@ -752,15 +737,15 @@ function PopupApp() {
 
     try {
       if (dragItem.type === "entry") {
-        const nextFolder = target === UNCATEGORIZED_FOLDER ? "" : target;
-        if (!nextFolder && target !== UNCATEGORIZED_FOLDER) {
-          setBusy(false);
-          return;
-        }
+        const nextFolder = target === ALL_FOLDERS || target === UNCATEGORIZED_FOLDER ? "" : target;
         const nextVault = moveEntryToFolder(vault, dragItem.entryId, nextFolder);
         await persistVault(
           nextVault,
-          nextFolder ? `已将账号移动到 ${nextFolder}。` : "已将账号移动到未分类。",
+          target === ALL_FOLDERS
+            ? "已将账号移动到根层。"
+            : nextFolder
+              ? `已将账号移动到 ${nextFolder}。`
+              : "已将账号移动到未分类。",
         );
         setSelectedEntry(nextVault.entries.find((entry) => entry.id === dragItem.entryId) ?? selectedEntry);
         return;
@@ -807,7 +792,11 @@ function PopupApp() {
   function canDropOnFolder(target: string) {
     if (!dragItem) return false;
     if (dragItem.type === "entry") {
-      return target !== ALL_FOLDERS;
+      const draggedEntry = vault?.entries.find((entry) => entry.id === dragItem.entryId);
+      if (!draggedEntry) return false;
+      const currentFolder = entryFolder(draggedEntry);
+      const nextFolder = target === ALL_FOLDERS || target === UNCATEGORIZED_FOLDER ? "" : normalizeFolderPath(target);
+      return currentFolder !== nextFolder;
     }
     if (target === UNCATEGORIZED_FOLDER) return false;
     if (target === dragItem.folder) return false;
@@ -820,6 +809,9 @@ function PopupApp() {
   function renderEntryRow(entry: VaultEntry, showFolderChip: boolean) {
     const revealed = revealedEntryId === entry.id;
     const selected = selectedEntry?.id === entry.id;
+    const accountText = entry.username || entry.url || "未填写账号";
+    const accountCopyValue = entry.username || entry.url;
+    const accountCopyLabel = entry.username ? "账号" : "网址";
 
     return (
       <article
@@ -846,45 +838,21 @@ function PopupApp() {
               <strong>{entry.title || "未命名"}</strong>
               <span className="entry-host">{currentHost(entry.url) || "无网址"}</span>
             </div>
-            <p className="entry-username">{entry.username || entry.url || "未填写账号"}</p>
+            <button
+              type="button"
+              className="entry-copy-line entry-username"
+              title={`点击复制${accountCopyLabel}`}
+              onClick={() => {
+                void copyToClipboard(accountCopyValue || "", accountCopyLabel);
+              }}
+            >
+              {accountText}
+            </button>
           </div>
           <div className="entry-actions">
             <button
               type="button"
-              className="mini-button"
-              title="填充"
-              onClick={(event) => {
-                event.stopPropagation();
-                void handleFill(entry);
-              }}
-            >
-              填充
-            </button>
-            <button
-              type="button"
-              className="icon-button small"
-              title="复制账号"
-              onClick={(event) => {
-                event.stopPropagation();
-                void copyToClipboard(entry.username, "账号");
-              }}
-            >
-              <Copy size={14} />
-            </button>
-            <button
-              type="button"
-              className="icon-button small"
-              title="复制密码"
-              onClick={(event) => {
-                event.stopPropagation();
-                void copyToClipboard(entry.password, "密码");
-              }}
-            >
-              <KeyRound size={14} />
-            </button>
-            <button
-              type="button"
-              className="icon-button small danger"
+              className="icon-button small danger row-delete"
               title="删除"
               onClick={(event) => {
                 event.stopPropagation();
@@ -907,9 +875,16 @@ function PopupApp() {
         </div>
 
         <div className="secret-row">
-          <span className={`secret-value${revealed ? " revealed" : ""}`}>
+          <button
+            type="button"
+            className={`secret-value${revealed ? " revealed" : ""}`}
+            title="点击复制密码"
+            onClick={() => {
+              void copyToClipboard(entry.password, "密码");
+            }}
+          >
             {revealed ? entry.password : "••••••••••••"}
-          </span>
+          </button>
           <button
             type="button"
             className="text-button"

@@ -517,13 +517,26 @@ textarea:focus-visible {
 
 .entry-username {
   margin: 4px 0 0;
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
   font-size: 10px;
   color: var(--muted);
+  text-align: left;
+  cursor: pointer;
 }
 
 .entry-actions {
-  flex-wrap: wrap;
+  align-self: stretch;
+  align-items: flex-start;
   justify-content: flex-end;
+}
+
+.entry-copy-line:hover {
+  color: var(--text);
 }
 
 .entry-meta {
@@ -557,24 +570,35 @@ textarea:focus-visible {
 }
 
 .secret-value {
+  appearance: none;
+  font: inherit;
+  width: 100%;
   min-height: 28px;
   display: inline-flex;
   align-items: center;
+  justify-content: flex-start;
   padding: 0 10px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #f8fbfd;
   color: #64808c;
+  text-align: left;
   font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
   font-size: 10px;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+  cursor: pointer;
 }
 
 .secret-value.revealed {
   border-color: var(--line-strong);
   background: #fff;
+  color: var(--text);
+}
+
+.secret-value:hover {
+  border-color: var(--line-strong);
   color: var(--text);
 }
 
