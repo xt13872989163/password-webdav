@@ -65,6 +65,7 @@ const TITLE_SUGGESTIONS_ID = "pw-title-suggestions";
 const URL_SUGGESTIONS_ID = "pw-url-suggestions";
 const USERNAME_SUGGESTIONS_ID = "pw-username-suggestions";
 const FOLDER_SUGGESTIONS_ID = "pw-folder-suggestions";
+const DEBUG_LOG_KEY = "password-webdav.popup-debug-log";
 
 type BrowseMode = "folders" | "all";
 type DragItem =
@@ -245,6 +246,25 @@ function rebasePath(path: string, source: string, target: string) {
   return normalizedPath;
 }
 
+function loadDebugLog() {
+  try {
+    const raw = localStorage.getItem(DEBUG_LOG_KEY);
+    if (!raw) return [] as string[];
+    const parsed = JSON.parse(raw) as string[];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveDebugLog(lines: string[]) {
+  try {
+    localStorage.setItem(DEBUG_LOG_KEY, JSON.stringify(lines.slice(-12)));
+  } catch {
+    // ignore localStorage failures
+  }
+}
+
 function formatUnlockError(error: unknown, settings: WebDavConfig) {
   const raw = error instanceof Error ? error.message : "解锁失败。";
   const url = resolveVaultUrl(settings);
@@ -288,6 +308,21 @@ function PopupApp() {
   const [dropFolder, setDropFolder] = useState<string | null>(null);
   const [renamingFolder, setRenamingFolder] = useState<string | null>(null);
   const [renamingValue, setRenamingValue] = useState("");
+  const [debugLog, setDebugLog] = useState<string[]>(() => loadDebugLog());
+
+  function appendDebugLog(message: string) {
+    const line = `[${new Date().toLocaleTimeString("zh-CN", { hour12: false })}] ${message}`;
+    setDebugLog((current) => {
+      const next = [...current, line].slice(-12);
+      saveDebugLog(next);
+      return next;
+    });
+  }
+
+  function clearDebugLog() {
+    setDebugLog([]);
+    saveDebugLog([]);
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -449,6 +484,7 @@ function PopupApp() {
   async function handleUnlock() {
     const error = validateUnlock(settings, masterPassword);
     if (error) {
+      appendDebugLog(`校验失败：${error}`);
       console.warn("[Password WebDAV] unlock validation failed", {
         baseUrl: settings.baseUrl,
         username: settings.username,
@@ -461,6 +497,7 @@ function PopupApp() {
 
     setBusy(true);
     setStatus("正在检查 WebDAV 连接...");
+    appendDebugLog(`开始解锁：${resolveVaultUrl(settings)}`);
     console.info("[Password WebDAV] unlock start", {
       baseUrl: settings.baseUrl,
       username: settings.username,
@@ -468,19 +505,23 @@ function PopupApp() {
     });
     try {
       await saveExtensionConfig(settings);
+      appendDebugLog("配置已保存，开始读取 WebDAV vault");
       const file = await loadVaultFile(settings);
       if (!file) {
         const nextVault = createEmptyVault();
         setStatus("未找到 vault，正在创建新的加密密码库...");
+        appendDebugLog("未找到远端 vault，开始创建新的加密密码库");
         console.info("[Password WebDAV] vault not found, creating new encrypted vault");
         await persistVault(nextVault, "WebDAV 上没有找到 vault，已创建新的加密密码库。");
         await rememberMasterPasswordForBackground();
         setSelectedEntry(null);
+        appendDebugLog("新 vault 创建成功，当前会话已解锁");
         console.info("[Password WebDAV] vault created and unlocked");
         return;
       }
 
       setStatus("正在解密并载入密码库...");
+      appendDebugLog("远端 vault 已读取，开始解密");
       const plain = await decryptVault(masterPassword, file);
       await saveUnlockedVault(plain);
       await rememberMasterPasswordForBackground();
@@ -488,6 +529,7 @@ function PopupApp() {
       setSelectedEntry(plain.entries[0] ?? null);
       setDirty(false);
       setStatus(`已解锁 ${plain.entries.length} 条密码。`);
+      appendDebugLog(`解锁成功：${plain.entries.length} 条密码`);
       console.info("[Password WebDAV] unlock success", { entryCount: plain.entries.length });
     } catch (error) {
       console.error("[Password WebDAV] unlock failed", {
@@ -496,7 +538,9 @@ function PopupApp() {
         username: settings.username,
         vaultPath: settings.vaultPath,
       });
-      setStatus(formatUnlockError(error, settings));
+      const formatted = formatUnlockError(error, settings);
+      appendDebugLog(`解锁失败：${formatted}`);
+      setStatus(formatted);
     } finally {
       setBusy(false);
     }
@@ -1047,6 +1091,27 @@ function PopupApp() {
             ? `调试提示：如需更详细信息，请在扩展弹窗的开发者工具里查看 Console。`
             : "如果卡住了，通常是 WebDAV 地址、用户名、应用密码或网络超时导致的。"}
         </p>
+
+        <section className="panel-card debug-panel">
+          <div className="panel-header">
+            <div>
+              <strong>调试日志</strong>
+              <span>这里会打印解锁过程，便于定位卡在哪一步</span>
+            </div>
+            <button type="button" className="text-button" onClick={clearDebugLog}>
+              清空
+            </button>
+          </div>
+          <div className="debug-log">
+            {debugLog.length > 0 ? (
+              debugLog.map((line, index) => (
+                <p key={`${line}-${index}`}>{line}</p>
+              ))
+            ) : (
+              <p>当前还没有解锁日志，点击“解锁或创建”后这里会出现详细过程。</p>
+            )}
+          </div>
+        </section>
       </main>
     );
   }

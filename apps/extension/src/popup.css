@@ -66,6 +66,10 @@ textarea:focus-visible {
   gap: 10px;
 }
 
+.debug-panel {
+  margin-top: 10px;
+}
+
 .manager-shell {
   width: 500px;
   max-height: 680px;
@@ -307,6 +311,26 @@ textarea:focus-visible {
   line-height: 1.55;
   display: flex;
   align-items: center;
+}
+
+.debug-log {
+  display: grid;
+  gap: 6px;
+  max-height: 160px;
+  overflow: auto;
+  padding-top: 2px;
+}
+
+.debug-log p {
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid #dce6ec;
+  border-radius: 8px;
+  background: #f9fcfd;
+  color: #526875;
+  font-size: 11px;
+  line-height: 1.45;
+  word-break: break-word;
 }
 
 .layout-two-col {
