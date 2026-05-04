@@ -58,12 +58,23 @@ textarea:focus-visible {
 }
 
 .unlock-shell {
-  width: 370px;
+  width: 500px;
+  max-height: 680px;
+  overflow: auto;
 }
 
-.unlock-shell .panel-card {
+.unlock-panel {
   display: grid;
-  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 8px;
+}
+
+.unlock-panel .field:first-child,
+.unlock-panel .field:nth-of-type(4),
+.unlock-panel .field:nth-of-type(5),
+.unlock-panel .field-help,
+.unlock-panel .unlock-footer {
+  grid-column: 1 / -1;
 }
 
 .debug-panel {
@@ -297,11 +308,13 @@ textarea:focus-visible {
 
 .unlock-footer {
   display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: stretch;
   gap: 8px;
 }
 
 .unlock-status {
-  min-height: 54px;
+  min-height: 38px;
   padding: 9px 10px;
   border: 1px solid var(--line);
   border-radius: 10px;

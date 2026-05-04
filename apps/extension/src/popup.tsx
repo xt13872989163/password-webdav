@@ -1022,7 +1022,7 @@ function PopupApp() {
           </button>
         </header>
 
-        <section className="panel-card">
+        <section className="panel-card unlock-panel">
           <label className="field">
             <span>WebDAV 根地址</span>
             <input value={settings.baseUrl} onChange={(event) => setSettings({ ...settings, baseUrl: event.target.value })} />

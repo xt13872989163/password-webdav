@@ -2,13 +2,15 @@ import {
   decryptVault,
   encryptVault,
   loadVaultFile,
+  mergeVaultFolders,
+  normalizeFolderPath,
   nowIso,
   saveVaultFile,
   uuid,
   type PlainVault,
   type VaultEntry,
 } from "@password-webdav/core";
-import { loadExtensionConfig, loadUnlockedVault, saveUnlockedVault } from "./extensionState";
+import { loadExtensionConfig, loadSessionMasterPassword, loadUnlockedVault, saveUnlockedVault } from "./extensionState";
 
 const PENDING_LOGIN_KEY = "password-webdav.extension.pendingLogin";
 const PENDING_LOGIN_MAX_AGE_MS = 5 * 60 * 1000;
@@ -19,6 +21,7 @@ interface DetectedLoginCandidate {
   url: string;
   title: string;
   detectedAt: string;
+  folder: string;
 }
 
 let sessionMasterPassword = "";
@@ -49,6 +52,7 @@ function normalizeCandidate(value: unknown): DetectedLoginCandidate {
     url: urlOrigin(url),
     title: String(candidate?.title || ""),
     detectedAt: String(candidate?.detectedAt || nowIso()),
+    folder: normalizeFolderPath(String(candidate?.folder || "")),
   };
 }
 
@@ -84,7 +88,7 @@ function entryFromCandidate(candidate: DetectedLoginCandidate) {
     username: candidate.username || "",
     password: candidate.password,
     url: candidate.url,
-    folder: "",
+    folder: candidate.folder,
     notes: "",
     tags: [],
     createdAt: now,
@@ -101,6 +105,7 @@ function upsertByUrlAndUsername(vault: PlainVault, nextEntry: VaultEntry) {
     return {
       ...vault,
       updatedAt: now,
+      folders: mergeVaultFolders(vault, [nextEntry.folder]),
       entries: [nextEntry, ...vault.entries],
     };
   }
@@ -114,15 +119,38 @@ function upsertByUrlAndUsername(vault: PlainVault, nextEntry: VaultEntry) {
             ...entry,
             password: nextEntry.password,
             title: nextEntry.title || entry.title,
+            folder: nextEntry.folder,
             updatedAt: now,
           }
         : entry,
     ),
+    folders: mergeVaultFolders(vault, [nextEntry.folder]),
+  };
+}
+
+async function getSessionMasterPassword() {
+  if (sessionMasterPassword) return sessionMasterPassword;
+  sessionMasterPassword = await loadSessionMasterPassword();
+  return sessionMasterPassword;
+}
+
+async function getDetectedLoginFolderOptions(value: unknown) {
+  const vault = await loadUnlockedVault();
+  if (!vault) return { folders: [] as string[], defaultFolder: "" };
+
+  const candidate = normalizeCandidate(value);
+  const existing = vault.entries.find(
+    (entry) => entry.url === candidate.url && entry.username === candidate.username,
+  );
+  return {
+    folders: vault.folders ?? [],
+    defaultFolder: normalizeFolderPath(existing?.folder || ""),
   };
 }
 
 async function saveDetectedLogin(value: unknown) {
-  if (!sessionMasterPassword) {
+  const masterPassword = await getSessionMasterPassword();
+  if (!masterPassword) {
     throw new Error("请先打开插件并解锁 vault，再保存密码。");
   }
 
@@ -133,10 +161,10 @@ async function saveDetectedLogin(value: unknown) {
 
   const settings = await loadExtensionConfig();
   const latestFile = await loadVaultFile(settings);
-  const latestVault = latestFile ? await decryptVault(sessionMasterPassword, latestFile) : vault;
+  const latestVault = latestFile ? await decryptVault(masterPassword, latestFile) : vault;
   const candidate = normalizeCandidate(value);
   const nextVault = upsertByUrlAndUsername(latestVault, entryFromCandidate(candidate));
-  await saveVaultFile(settings, await encryptVault(sessionMasterPassword, nextVault));
+  await saveVaultFile(settings, await encryptVault(masterPassword, nextVault));
   await saveUnlockedVault(nextVault);
   await clearPendingLogin();
 }
@@ -178,6 +206,13 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
   if (message?.type === "password-webdav.dismiss-detected-login") {
     void clearPendingLogin().then(() => sendResponse({ ok: true }));
+    return true;
+  }
+
+  if (message?.type === "password-webdav.get-detected-login-folder-options") {
+    void getDetectedLoginFolderOptions(message.entry)
+      .then((options) => sendResponse({ ok: true, ...options }))
+      .catch(() => sendResponse({ ok: true, folders: [], defaultFolder: "" }));
     return true;
   }
 

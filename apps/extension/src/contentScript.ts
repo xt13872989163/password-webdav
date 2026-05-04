@@ -5,10 +5,12 @@ interface DetectedLoginCandidate {
   password: string;
   url: string;
   title: string;
+  folder?: string;
 }
 
 let lastCandidate: DetectedLoginCandidate | null = null;
 let promptEl: HTMLDivElement | null = null;
+let promptLoading = false;
 
 function dispatchInputEvents(element: HTMLInputElement, value: string) {
   const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
@@ -136,8 +138,20 @@ function createButton(label: string, variant: "primary" | "secondary") {
   return button;
 }
 
-function showSavePrompt() {
-  if (!lastCandidate || promptEl) return;
+async function showSavePrompt() {
+  if (!lastCandidate || promptEl || promptLoading) return;
+  promptLoading = true;
+  const candidate = lastCandidate;
+
+  const folderOptions = (await sendRuntimeMessage<{ ok?: boolean; folders?: string[]; defaultFolder?: string }>({
+    type: "password-webdav.get-detected-login-folder-options",
+    entry: candidate,
+  })) || { folders: [], defaultFolder: "" };
+
+  if (promptEl) {
+    promptLoading = false;
+    return;
+  }
 
   promptEl = document.createElement("div");
   promptEl.style.cssText = [
@@ -162,7 +176,29 @@ function showSavePrompt() {
 
   const account = document.createElement("div");
   account.style.cssText = "font-size:12px;color:#4b5563;margin-bottom:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap";
-  appendText(account, lastCandidate.username || location.hostname);
+  appendText(account, candidate.username || location.hostname);
+
+  const folderField = document.createElement("label");
+  folderField.style.cssText = "display:flex;flex-direction:column;gap:6px;font-size:12px;color:#4b5563;margin-bottom:12px";
+  appendText(folderField, "文件夹");
+
+  const folderSelect = document.createElement("select");
+  folderSelect.style.cssText = "height:34px;border:1px solid #cbd5e1;border-radius:6px;padding:0 10px;background:#fff;color:#111827";
+
+  const rootOption = document.createElement("option");
+  rootOption.value = "";
+  rootOption.textContent = "无文件夹";
+  folderSelect.appendChild(rootOption);
+
+  for (const folder of folderOptions.folders ?? []) {
+    const option = document.createElement("option");
+    option.value = folder;
+    option.textContent = folder;
+    folderSelect.appendChild(option);
+  }
+
+  folderSelect.value = folderOptions.defaultFolder || candidate.folder || "";
+  folderField.appendChild(folderSelect);
 
   const actions = document.createElement("div");
   actions.style.display = "flex";
@@ -175,7 +211,7 @@ function showSavePrompt() {
   const status = document.createElement("div");
   status.style.cssText = "font-size:12px;color:#4b5563;margin-top:8px";
 
-  promptEl.append(title, account, actions, status);
+  promptEl.append(title, account, folderField, actions, status);
 
   dismissButton.addEventListener("click", () => {
     void sendRuntimeMessage({ type: "password-webdav.dismiss-detected-login" });
@@ -186,7 +222,7 @@ function showSavePrompt() {
     status.textContent = "正在保存...";
     void sendRuntimeMessage<{ ok?: boolean; message?: string }>({
       type: "password-webdav.save-detected-login",
-      entry: lastCandidate,
+      entry: { ...candidate, folder: folderSelect.value },
     }).then((response) => {
       status.textContent = response?.message || "已处理。";
       if (response?.ok) {
@@ -196,12 +232,13 @@ function showSavePrompt() {
   });
 
   document.documentElement.appendChild(promptEl);
+  promptLoading = false;
 }
 
 function showPromptWhenLoginPageDisappears() {
   window.setTimeout(() => {
     if (lastCandidate && !findPasswordField()) {
-      showSavePrompt();
+      void showSavePrompt();
     }
   }, 700);
 }
@@ -287,7 +324,7 @@ window.setTimeout(() => {
   }).then((response) => {
     if (!response?.entry || findPasswordField()) return;
     lastCandidate = response.entry;
-    showSavePrompt();
+    void showSavePrompt();
   });
 }, 800);
 
