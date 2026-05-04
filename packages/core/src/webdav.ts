@@ -2,6 +2,7 @@ import type { EncryptedVaultFile, WebDavConfig } from "./types";
 import { decodeEncryptedVaultFile, encodeJson } from "./crypto";
 
 export const DEFAULT_VAULT_FILENAME = "password-vault.json";
+const DEFAULT_PROVIDER_FOLDER = "PasswordWebDAV";
 
 function trimLeadingSlashes(value: string) {
   return value.replace(/^\/+/, "");
@@ -13,12 +14,25 @@ function ensureTrailingSlash(value: string) {
 
 export function resolveVaultUrl(config: WebDavConfig) {
   const base = new URL(ensureTrailingSlash(config.baseUrl));
-  return new URL(trimLeadingSlashes(config.vaultPath || DEFAULT_VAULT_FILENAME), base).toString();
+  return new URL(normalizeVaultPath(config, base), base).toString();
+}
+
+function normalizeVaultPath(config: WebDavConfig, base: URL) {
+  const rawPath = trimLeadingSlashes(config.vaultPath || DEFAULT_VAULT_FILENAME);
+  if (rawPath.includes("/")) {
+    return rawPath;
+  }
+
+  if (base.hostname.toLowerCase().endsWith("jianguoyun.com")) {
+    return `${DEFAULT_PROVIDER_FOLDER}/${rawPath}`;
+  }
+
+  return rawPath;
 }
 
 function resolveVaultParentUrls(config: WebDavConfig) {
   const base = new URL(ensureTrailingSlash(config.baseUrl));
-  const parts = trimLeadingSlashes(config.vaultPath || DEFAULT_VAULT_FILENAME)
+  const parts = normalizeVaultPath(config, base)
     .split("/")
     .filter(Boolean);
   if (parts.length <= 1) {

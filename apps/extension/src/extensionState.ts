@@ -7,7 +7,7 @@ export const DEFAULT_EXTENSION_CONFIG: WebDavConfig = {
   baseUrl: "",
   username: "",
   password: "",
-  vaultPath: "password-vault.json",
+  vaultPath: "PasswordWebDAV/password-vault.json",
 };
 
 export async function loadExtensionConfig(): Promise<WebDavConfig> {
@@ -31,4 +31,3 @@ export async function saveUnlockedVault(vault: PlainVault) {
 export async function clearUnlockedVault() {
   await chrome.storage.session.remove(VAULT_KEY);
 }
-

@@ -54,4 +54,29 @@ describe("webdav", () => {
       ["https://example.com/dav/passwords/private/password-vault.json", "PUT"],
     ]);
   });
+
+  it("places jianguoyun root vaults under a provider folder", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 201,
+      statusText: "Created",
+      headers: new Headers(),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await saveVaultFile(
+      {
+        baseUrl: "https://dav.jianguoyun.com/dav/",
+        username: "user",
+        password: "pass",
+        vaultPath: "password-vault.json",
+      },
+      file,
+    );
+
+    expect(fetchMock.mock.calls.map(([url, init]) => [url, init?.method])).toEqual([
+      ["https://dav.jianguoyun.com/dav/PasswordWebDAV/", "MKCOL"],
+      ["https://dav.jianguoyun.com/dav/PasswordWebDAV/password-vault.json", "PUT"],
+    ]);
+  });
 });
