@@ -392,9 +392,25 @@ function PopupApp() {
 
   const host = useMemo(() => currentHost(tabUrl), [tabUrl]);
   const text = useMemo(() => getMessages(settings.language), [settings.language]);
+  const feedback = useMemo(() => {
+    const isEn = settings.language === "en";
+    return {
+      ready: isEn ? "Ready." : "已就绪，等待操作。",
+      copyFailed: isEn ? "Copy failed. Please try again." : "复制失败，请重试。",
+      foldersView: isEn ? "Switched to folders view." : "已切换到文件夹视图。",
+      allView: isEn ? "Switched to all accounts view." : "已切换到全部账号视图。",
+      selectedFolder: (folder: string) => (isEn ? `Selected folder: ${folder}` : `已选择文件夹：${folder}`),
+      selectedEntry: (label: string) => (isEn ? `Selected account: ${label}` : `已选择账号：${label}`),
+      expandedFolder: (folder: string) => (isEn ? `Expanded ${folder}.` : `已展开 ${folder}。`),
+      collapsedFolder: (folder: string) => (isEn ? `Collapsed ${folder}.` : `已收起 ${folder}。`),
+      passwordShown: isEn ? "Password is visible." : "密码已显示。",
+      passwordHidden: isEn ? "Password is hidden." : "密码已隐藏。",
+    };
+  }, [settings.language]);
   const vaultSubpath = useMemo(() => getExtensionVaultSubpath(settings), [settings]);
   const selectedEntryIsNew = useMemo(() => isNewDraftEntry(vault, selectedEntry), [selectedEntry, vault]);
   const draftHost = useMemo(() => currentHost(selectedEntry?.url || tabUrl), [selectedEntry, tabUrl]);
+  const statusText = status || (busy ? text.processingWait : feedback.ready);
 
   const entries = useMemo(() => {
     const source = vault?.entries ?? [];
@@ -550,6 +566,12 @@ function PopupApp() {
     setSelectedEntry(entry);
     setDirty(false);
     setStatus(text.status.switchedAccount);
+  }
+
+  function describeEntry(entry: VaultEntry) {
+    const primary = entry.title.trim() || text.unnamed;
+    const secondary = entry.username.trim() || currentHost(entry.url) || "";
+    return secondary && secondary !== primary ? `${primary} · ${secondary}` : primary;
   }
 
   async function persistVault(nextVault: PlainVault, nextStatus = text.status.synced) {
@@ -761,8 +783,12 @@ function PopupApp() {
       setStatus(text.status.emptyValue(label));
       return;
     }
-    await navigator.clipboard.writeText(value);
-    setStatus(text.status.copied(label));
+    try {
+      await navigator.clipboard.writeText(value);
+      setStatus(text.status.copied(label));
+    } catch {
+      setStatus(feedback.copyFailed);
+    }
   }
 
   async function lockVault() {
@@ -1014,7 +1040,10 @@ function PopupApp() {
           setDragItem(null);
           setDropFolder(null);
         }}
-        onClick={() => setSelectedEntry(entry)}
+        onClick={() => {
+          setSelectedEntry(entry);
+          setStatus(feedback.selectedEntry(describeEntry(entry)));
+        }}
         onDoubleClick={() => {
           openEntryDetail(entry);
         }}
@@ -1048,10 +1077,11 @@ function PopupApp() {
                 <button
                   type="button"
                   className="entry-title-button"
-                  title={text.renameTitle}
+                  title={`${entry.title || text.unnamed} · ${text.renameTitle}`}
                   onClick={(event) => {
                     event.stopPropagation();
                     setSelectedEntry(entry);
+                    setStatus(feedback.selectedEntry(describeEntry(entry)));
                   }}
                   onDoubleClick={(event) => {
                     event.stopPropagation();
@@ -1061,14 +1091,17 @@ function PopupApp() {
                   {entry.title || text.unnamed}
                 </button>
               )}
-              <span className="entry-host">{currentHost(entry.url) || text.noUrl}</span>
+              <span className="entry-host" title={entry.url || text.noUrl}>
+                {currentHost(entry.url) || text.noUrl}
+              </span>
             </div>
             <div className="entry-credentials">
               <button
                 type="button"
                 className="entry-copy-line entry-username"
-                title={entry.username ? text.copyAccount : text.copyUrl}
-                onClick={() => {
+                title={`${accountText} · ${entry.username ? text.copyAccount : text.copyUrl}`}
+                onClick={(event) => {
+                  event.stopPropagation();
                   void copyToClipboard(accountCopyValue || "", accountCopyLabel);
                 }}
               >
@@ -1080,11 +1113,12 @@ function PopupApp() {
                   type="button"
                   className={`secret-value${revealed ? " revealed" : ""}`}
                   title={text.copyPassword}
-                  onClick={() => {
+                  onClick={(event) => {
+                    event.stopPropagation();
                     void copyToClipboard(entry.password, text.password);
                   }}
                 >
-                  {revealed ? entry.password : "****"}
+                  {revealed ? entry.password : "********"}
                 </button>
                 <button
                   type="button"
@@ -1093,26 +1127,25 @@ function PopupApp() {
                   aria-label={revealed ? text.hidePassword : text.showPassword}
                   onClick={(event) => {
                     event.stopPropagation();
+                    setStatus(revealed ? feedback.passwordHidden : feedback.passwordShown);
                     setRevealedEntryId((current) => (current === entry.id ? null : entry.id));
                   }}
                 >
                   {revealed ? <EyeOff size={14} /> : <Eye size={14} />}
                 </button>
+                <button
+                  type="button"
+                  className="icon-button small danger row-delete inline-delete"
+                  title={text.delete}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    void handleDelete(entry.id);
+                  }}
+                >
+                  <Trash2 size={14} />
+                </button>
               </div>
             </div>
-          </div>
-          <div className="entry-actions">
-            <button
-              type="button"
-              className="icon-button small danger row-delete"
-              title={text.delete}
-              onClick={(event) => {
-                event.stopPropagation();
-                void handleDelete(entry.id);
-              }}
-            >
-              <Trash2 size={14} />
-            </button>
           </div>
         </div>
 
@@ -1174,17 +1207,19 @@ function PopupApp() {
           type="button"
           className={`folder-main${canCollapse ? " has-children" : ""}`}
           title={isSpecial ? treeLabel : normalized}
-          onClick={() => {
-            setActiveFolder(folder);
-            setBrowseMode("folders");
-          }}
-        >
+        onClick={() => {
+          setActiveFolder(folder);
+          setBrowseMode("folders");
+          setStatus(feedback.selectedFolder(treeLabel));
+        }}
+      >
           <span
             className={`folder-toggle${canCollapse ? "" : " placeholder"}`}
             aria-hidden={!canCollapse}
             title={collapsed ? text.expand : text.collapse}
             onClick={(event) => {
               event.stopPropagation();
+              setStatus(collapsed ? feedback.expandedFolder(treeLabel) : feedback.collapsedFolder(treeLabel));
               toggleFolderCollapse(normalized);
             }}
           >
@@ -1220,7 +1255,10 @@ function PopupApp() {
             type="button"
             className="icon-button small row-delete"
             title={text.deleteFolder}
-            onClick={() => void handleDeleteFolder(normalized)}
+            onClick={(event) => {
+              event.stopPropagation();
+              void handleDeleteFolder(normalized);
+            }}
           >
             <Trash2 size={14} />
           </button>
@@ -1620,7 +1658,7 @@ function PopupApp() {
   }
 
   return (
-    <main className="popup-shell manager-shell" data-theme={settings.theme}>
+    <main className={`popup-shell manager-shell panel-${panelMode}`} data-theme={settings.theme}>
       <header className="popup-header manager-header">
         <div className="header-title">
           {panelMode !== "main" ? (
@@ -1648,14 +1686,20 @@ function PopupApp() {
               <button
                 type="button"
                 className={browseMode === "folders" ? "active" : ""}
-                onClick={() => setBrowseMode("folders")}
+                onClick={() => {
+                  setBrowseMode("folders");
+                  setStatus(feedback.foldersView);
+                }}
               >
                 {text.folders}
               </button>
               <button
                 type="button"
                 className={browseMode === "all" ? "active" : ""}
-                onClick={() => setBrowseMode("all")}
+                onClick={() => {
+                  setBrowseMode("all");
+                  setStatus(feedback.allView);
+                }}
               >
                 {text.allTab}
               </button>
@@ -1726,7 +1770,12 @@ function PopupApp() {
         ))}
       </datalist>
 
-      {status && <p className="status popup-status">{status}{dirty ? ` · ${text.dirtySuffix}` : ""}</p>}
+      <footer className="popup-footer">
+        <p className="status popup-status" aria-live="polite">
+          {statusText}
+          {dirty ? ` · ${text.dirtySuffix}` : ""}
+        </p>
+      </footer>
     </main>
   );
 }

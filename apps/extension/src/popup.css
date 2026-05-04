@@ -173,7 +173,8 @@
 }
 
 html,
-body {
+body,
+#root {
   min-height: 100%;
 }
 
@@ -227,7 +228,7 @@ textarea:focus-visible {
 
 .unlock-shell {
   width: 520px;
-  min-height: 600px;
+  height: 540px;
 }
 
 .unlock-panel {
@@ -296,7 +297,15 @@ textarea:focus-visible {
 
 .manager-shell {
   width: 520px;
-  min-height: 680px;
+}
+
+.manager-shell.panel-main {
+  height: 560px;
+}
+
+.manager-shell.panel-settings,
+.manager-shell.panel-entry {
+  height: 520px;
 }
 
 .options-shell {
@@ -310,6 +319,12 @@ textarea:focus-visible {
   min-height: 0;
   overflow: auto;
   padding-right: 4px;
+}
+
+.manager-shell.panel-settings .popup-content,
+.manager-shell.panel-entry .popup-content {
+  flex: 1 1 auto;
+  overflow: auto;
 }
 
 .popup-header {
@@ -400,14 +415,14 @@ textarea:focus-visible {
   align-items: center;
   padding: 2px;
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-radius: 8px;
   background: var(--button-bg);
 }
 
 .view-toggle button {
   min-height: 26px;
   padding: 0 10px;
-  border-radius: 999px;
+  border-radius: 6px;
   background: transparent;
   color: var(--muted);
   font-size: 11px;
@@ -814,7 +829,7 @@ textarea:focus-visible {
 
 .entry-top {
   display: grid;
-  grid-template-columns: 16px minmax(0, 1fr) auto;
+  grid-template-columns: 16px minmax(0, 1fr);
   gap: 6px;
   align-items: start;
 }
@@ -833,8 +848,9 @@ textarea:focus-visible {
 }
 
 .entry-title {
-  display: flex;
-  align-items: center;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(72px, 110px);
+  align-items: baseline;
   gap: 6px;
   min-width: 0;
 }
@@ -849,6 +865,7 @@ textarea:focus-visible {
 
 .entry-title-button {
   appearance: none;
+  display: block;
   min-width: 0;
   padding: 0;
   border: 0;
@@ -877,6 +894,7 @@ textarea:focus-visible {
   font-size: 11px;
   font-weight: 750;
   color: var(--muted);
+  text-align: right;
 }
 
 .entry-username {
@@ -897,14 +915,29 @@ textarea:focus-visible {
   cursor: pointer;
 }
 
+.entry-title-button,
+.entry-copy-line,
+.secret-value {
+  transition:
+    color 0.15s ease,
+    opacity 0.15s ease;
+}
+
 .entry-actions {
   align-self: stretch;
   align-items: flex-start;
   justify-content: flex-end;
 }
 
-.entry-copy-line:hover {
-  color: var(--text);
+.entry-title-button:hover,
+.entry-copy-line:hover,
+.secret-value:hover {
+  color: var(--accent);
+}
+
+.entry-copy-line:active,
+.secret-value:active {
+  opacity: 0.7;
 }
 
 .entry-meta {
@@ -1018,10 +1051,14 @@ textarea:focus-visible {
   flex: 2 1 190px;
   min-width: 180px;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 28px;
+  grid-template-columns: minmax(0, 1fr) 28px 28px;
   align-items: center;
   gap: 6px;
   margin: 0;
+}
+
+.inline-delete {
+  margin-right: 0;
 }
 
 .secret-toggle {
@@ -1217,16 +1254,25 @@ textarea:focus-visible {
 
 .status {
   margin: 10px 0 0;
+  min-height: 38px;
   padding: 8px 10px;
   border: 1px solid var(--line);
   border-radius: 10px;
   background: var(--surface);
   color: var(--muted);
   font-size: 12px;
+  line-height: 1.45;
+  display: flex;
+  align-items: center;
+}
+
+.popup-footer {
+  margin-top: 10px;
+  flex: 0 0 auto;
 }
 
 .popup-status {
-  flex: 0 0 auto;
+  margin: 0;
 }
 
 .empty-hint {
