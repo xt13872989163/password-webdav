@@ -1,279 +1,279 @@
-# Password WebDAV Popup Redesign Design
+# Password WebDAV 弹窗重设计说明
 
-## Summary
+## 概述
 
-This design updates the Chrome extension UI for `Password WebDAV` so the extension popup behaves like a compact daily-use password tool instead of a mini admin console. The popup remains the primary interface. We are not reintroducing the web app, and we are not switching the main workflow to a side panel in this iteration.
+这次要把 `Password WebDAV` 的 Chrome 扩展界面改成一个真正适合日常使用的紧凑密码工具，而不是缩小版管理后台。主界面仍然是扩展弹窗。我们这次不恢复 web 版本，也不把主流程切到 side panel。
 
-The approved direction is:
+已确认的方向：
 
-- Keep the product as a Chrome extension only
-- Keep the main surface as the popup
-- Use a compact two-column layout in folder view
-- Keep an "all accounts" view for quick browsing
-- Add a visible settings entry point
-- Allow passwords to stay masked by default and reveal on demand
-- Move detailed editing out of the main list view into a settings/detail view
+- 产品保持为 Chrome 扩展
+- 主界面保持为 popup
+- 文件夹视图采用紧凑双栏布局
+- 保留“全部账号”视图，方便快速浏览
+- 增加明显的设置入口
+- 密码默认隐藏，按需显示
+- 详细编辑从主列表移到设置 / 详情视图
 
-## Goals
+## 目标
 
-- Make the popup feel like a real browser extension rather than a shrunk web page
-- Keep the main view optimized for quick browse, fill, copy, save, reveal, and delete actions
-- Make folders and subfolders obvious at a glance
-- Preserve WebDAV-backed encrypted vault behavior and current session unlock behavior
-- Reduce visual and cognitive load in the main UI
+- 让弹窗看起来像真正的浏览器扩展，而不是缩小版网页
+- 主界面只负责快速浏览、填充、复制、保存、显示 / 隐藏、删除
+- 让文件夹和子文件夹一眼可见
+- 保留 WebDAV 加密 vault 和当前会话解锁行为
+- 降低主界面的视觉和操作负担
 
-## Non-Goals
+## 非目标
 
-- Reintroducing the standalone web UI
-- Making the Chrome popup manually resizable by dragging
-- Moving the primary workflow to `chrome.sidePanel` in this iteration
-- Changing the encryption model, WebDAV storage model, or vault file format
+- 不恢复独立 web UI
+- 不做可手动拖拽改变宽度的 Chrome popup
+- 这一次不把主流程切到 `chrome.sidePanel`
+- 不更改加密模型、WebDAV 存储模型或 vault 文件格式
 
-## Current Codebase Context
+## 代码现状
 
-- `apps/extension/src/popup.tsx` currently renders a wide three-pane manager with folder list, entry list, and inline editor
-- `apps/extension/src/popup.css` currently styles a desktop-like management layout
-- `apps/extension/src/options.tsx` already exists for extension settings
-- `apps/extension/src/extensionState.ts` stores config in `chrome.storage.local` and unlocked vault plus session master password in `chrome.storage.session`
-- `packages/core/src/folders.ts` already supports normalized folder paths, folder tree matching, and folder deletion that moves entries to uncategorized
+- `apps/extension/src/popup.tsx` 目前是一个横向很宽的三栏管理界面，包含文件夹、条目列表和内联编辑器
+- `apps/extension/src/popup.css` 目前是偏桌面管理台风格的布局
+- `apps/extension/src/options.tsx` 已经存在，用来处理扩展设置
+- `apps/extension/src/extensionState.ts` 把配置存在 `chrome.storage.local`，把已解锁 vault 和会话主密码存在 `chrome.storage.session`
+- `packages/core/src/folders.ts` 已经支持规范化文件夹路径、文件夹树匹配，以及删除文件夹后把条目移到未分类
 
-The redesign should build on these files instead of inventing a second management surface.
+这次重设计要在这些文件基础上推进，而不是再做一套平行的管理界面。
 
-## Information Architecture
+## 信息架构
 
-### Primary Surface
+### 主界面
 
-The primary surface remains the extension popup opened from the Chrome toolbar button.
+主界面仍然是点击 Chrome 工具栏按钮后打开的扩展 popup。
 
-The popup has two top-level browsing modes:
+popup 有两个一级浏览模式：
 
-1. `Folder view`
-2. `All accounts view`
+1. `文件夹视图`
+2. `全部账号视图`
 
-### Secondary Surface
+### 次级界面
 
-The popup gets a dedicated `Settings / Detail` view reachable from a fixed settings button in the popup header.
+popup 内增加一个固定的 `设置 / 详情` 视图，由头部的设置按钮打开。
 
-This secondary view stays inside the popup shell. The existing Chrome `options_page` can remain as a fallback place for global configuration, but it is not the primary daily-use path for this redesign.
+这个次级界面仍然留在 popup 内部，不是把用户赶到别的页面。现有的 Chrome `options_page` 可以保留为全局配置的兜底入口，但这次不作为日常使用主路径。
 
-This secondary view is where we place:
+这个次级界面放：
 
-- WebDAV configuration
-- Vault subpath configuration under fixed `PasswordWebDAV/`
-- Detailed entry editing
-- Tags
-- Notes
-- Password generation rules or advanced controls if they already exist or are added in the same implementation pass
-- Auto-save related controls if already present
+- WebDAV 配置
+- 固定在 `PasswordWebDAV/` 下的 vault 子路径
+- 条目详细编辑
+- 标签
+- 备注
+- 如果同一轮实现里已有或新增密码策略，也放这里
+- 如果已有自动保存相关选项，也放这里
 
-The main popup view should no longer show a full-width inline editor panel.
+主 popup 的列表视图里不再放完整内联编辑器。
 
-## Popup Layout
+## popup 布局
 
-### Locked State
+### 锁定状态
 
-The locked state remains simple and form-based:
+锁定态保持简单、表单化：
 
-- WebDAV base URL
-- WebDAV username
-- WebDAV password or app password
-- Vault subpath input under fixed `PasswordWebDAV/`
-- Master password
-- Unlock or create action
-- Status and error feedback
+- WebDAV 根地址
+- WebDAV 用户名
+- WebDAV 密码或应用密码
+- vault 子路径输入
+- 主密码
+- 解锁 / 创建按钮
+- 状态和错误提示
 
-This screen can continue to use the current practical structure, but visual styling should match the more compact plugin look.
+这部分可以继续用当前的基本结构，但视觉上要更像紧凑插件。
 
-### Unlocked State
+### 解锁状态
 
-The unlocked state becomes a compact plugin manager instead of a three-pane workspace.
+解锁后，界面变成紧凑插件管理器，而不是三栏工作台。
 
-Header:
+头部：
 
-- Product title
-- View toggle: `Folder view` / `All accounts`
-- Fixed `Settings` button
+- 产品标题
+- 视图切换：`文件夹视图` / `全部账号视图`
+- 固定的 `设置` 按钮
 
-Body:
+主体：
 
-- Search input
-- Main content area based on active view
+- 搜索框
+- 根据当前视图变化的主内容区
 
-Footer or status area:
+底部或状态区：
 
-- Small status messages
-- Dirty-state messaging when relevant
+- 简短状态信息
+- 未保存时的提示
 
-## Folder View
+## 文件夹视图
 
-Folder view uses a compact two-column layout inside the popup.
+文件夹视图在 popup 里使用紧凑双栏布局。
 
-### Left Column: Folders
+### 左栏：文件夹
 
-The left column shows:
+左栏显示：
 
-- `All`
-- `Uncategorized`
-- Folder tree
-- Subfolder indentation
-- Create folder control
+- `全部`
+- `未分类`
+- 文件夹树
+- 子文件夹缩进
+- 新建文件夹入口
 
-Folder interactions:
+文件夹交互：
 
-- Click to filter current list
-- Double-click to rename
-- Hover to reveal delete action
-- Drag and drop to move a folder into another folder and reparent the folder tree
+- 点击过滤当前列表
+- 双击重命名
+- 悬停显示删除按钮
+- 拖拽到另一个文件夹上进行移动和重新归属
 
-Folder drag-and-drop must update the moved folder path and all descendant folder paths consistently. Arbitrary sibling sort order remains out of scope.
+文件夹拖拽必须同时更新被移动文件夹路径和所有子孙文件夹路径。兄弟顺序的自由排序不在这次范围内。
 
-Deleting a folder keeps the current behavior:
+删除文件夹时保持现有规则：
 
-- The folder and its descendants are removed from the explicit folder list
-- Entries inside the removed folder tree are moved to uncategorized
+- 删除显式文件夹列表中的该文件夹及其后代
+- 该文件夹树下的条目移动到未分类
 
-### Right Column: Accounts
+### 右栏：账号
 
-The right column shows the accounts for the active folder scope.
+右栏显示当前文件夹范围内的账号。
 
-Each row is compact and includes:
+每一行保持紧凑，包含：
 
-- Drag handle
-- Title
-- Site or host directly in the title line
-- Username on a second line
-- Small recency or context chip when useful
-- Delete action visible on hover or on the selected row
+- 拖拽把手
+- 标题
+- 在标题行直接显示站点或域名
+- 第二行显示用户名
+- 可选的最近使用 / 上下文标签
+- 删除按钮在悬停或选中时出现
 
-The main list view stays intentionally lightweight. It should not show the full edit form.
+主列表视图要轻量，不要再显示完整编辑面板。
 
-## All Accounts View
+## 全部账号视图
 
-The all-accounts view uses the same compact account-row style as the folder view's right column.
+全部账号视图使用和文件夹视图右侧相同的紧凑列表样式。
 
-Requirements:
+要求：
 
-- Single list
-- No large detail panel
-- Keep folder context visible in a small chip or sublabel
-- Keep delete available from the list row
-- Keep password reveal available from the row
+- 单列表
+- 不要大详情面板
+- 保留文件夹上下文的小标签或副标题
+- 列表行里保留删除
+- 列表行里保留密码显示 / 隐藏
 
-## Password Reveal Interaction
+## 密码显示 / 隐藏
 
-Each account row should support a compact password reveal interaction.
+每个账号行都要支持一个紧凑的密码显示交互。
 
-Behavior:
+行为：
 
-- Default state shows masked password text such as `••••••••••••`
-- A `Show` control reveals the plaintext password
-- A second click hides it again
-- Reveal state is local UI state only and is not persisted
-- Revealed values should disappear when switching away, reloading, locking, or collapsing the row
+- 默认显示为掩码，例如 `••••••••••••`
+- 点击 `显示` 后显示明文密码
+- 再点一次隐藏
+- 这个状态只属于当前界面，不持久化
+- 切换视图、刷新、锁定或收起时都要恢复隐藏
 
-This interaction belongs in the main usage flow, not hidden in advanced settings.
+这个交互属于主使用流程，不是高级设置里的隐藏功能。
 
-## Entry Actions in Main View
+## 主界面可用动作
 
-The main popup view should prioritize direct-use actions.
+主 popup 要优先提供直接使用动作。
 
-Required actions available from the main view:
+主界面必须有：
 
-- Fill current page
-- Copy username
-- Copy password
-- Reveal or hide password
-- Delete account
-- Create new account
+- 填充当前页面
+- 复制用户名
+- 复制密码
+- 显示 / 隐藏密码
+- 删除账号
+- 新建账号
 
-Editing detailed metadata should move to the settings/detail view instead of living inline in the main list.
+详细元数据编辑要移到设置 / 详情视图里，不再放在主列表内联编辑。
 
-## Settings / Detail View
+## 设置 / 详情视图
 
-Clicking the header settings button opens a secondary popup view rather than forcing the user to leave the popup context.
+点击头部设置按钮后，打开的是 popup 内部的次级视图，而不是把用户带离当前弹窗上下文。
 
-This view should include two logical sections:
+这个视图分两块：
 
-1. `Vault settings`
-2. `Entry details`
+1. `vault 设置`
+2. `条目详情`
 
-### Vault Settings
+### vault 设置
 
-Vault settings should expose:
+vault 设置里要有：
 
-- WebDAV base URL
-- Username
-- Password or app password
-- Vault subpath
-- Reminder that root path is fixed to `PasswordWebDAV/`
-- Lock current session
-- Refresh or resync where relevant
+- WebDAV 根地址
+- 用户名
+- 密码或应用密码
+- vault 子路径
+- 提醒根路径固定为 `PasswordWebDAV/`
+- 锁定当前会话
+- 需要时可刷新 / 重新同步
 
-### Entry Details
+### 条目详情
 
-When an entry is selected from the main view, the settings/detail view should allow:
+当从主界面选中一个条目后，设置 / 详情视图要允许：
 
-- Edit title
-- Edit URL
-- Edit username
-- Edit password
-- Generate password
-- Edit folder path
-- Edit tags
-- Edit notes
-- Save
-- Delete
+- 编辑标题
+- 编辑网址
+- 编辑用户名
+- 编辑密码
+- 生成密码
+- 编辑文件夹路径
+- 编辑标签
+- 编辑备注
+- 保存
+- 删除
 
-If no entry is selected, the entry-details section can show an empty state.
+如果没有选中条目，这里可以显示空状态。
 
-## Suggestions and Assisted Input
+## 建议与输入辅助
 
-When creating or editing an account:
+创建或编辑账号时：
 
-- Title, URL, username, and folder inputs should continue using suggestions from existing vault data
-- Suggested usernames for the current host remain supported
-- Suggestions should feel automatic rather than hidden behind advanced mode
+- 标题、网址、用户名、文件夹输入继续使用现有 vault 数据提供的建议
+- 当前主机下的用户名建议继续保留
+- 建议要像自动提示，而不是藏在高级模式里
 
-This preserves the previously approved requirement that input should be assisted by known data where possible.
+这延续了之前已经确认过的“输入时要能根据已有数据辅助”的需求。
 
-## Dragging and Moving
+## 拖拽与移动
 
-The user explicitly requested mouse-driven movement.
+用户明确要求鼠标拖动移动。
 
-Implementation expectations:
+实现要求：
 
-- Account rows expose a drag affordance
-- Dropping an account onto a folder moves that account into the target folder
-- Folder rows expose a drag affordance
-- Dropping a folder onto another folder reparents that folder tree by updating folder paths for that subtree and affected entries
+- 账号行有拖拽把手
+- 把账号拖到文件夹上时，将该账号移动到目标文件夹
+- 文件夹行有拖拽把手
+- 把文件夹拖到另一个文件夹上时，重新归属整个文件夹树，并同步更新相关条目路径
 
-Because folder paths are path-based strings, folder moving must normalize and rewrite descendant folder paths consistently.
+因为文件夹路径是基于字符串路径的，所以移动文件夹时要统一规范化并重写所有后代路径。
 
-## Visual Design Rules
+## 视觉规则
 
-- The UI should look compact and calm with a light, slightly technical aesthetic
-- It should feel like a browser extension, not a dashboard
-- Main surfaces should use small radii, dense spacing, and restrained chrome
-- Avoid a right-side large details pane in the main usage view
-- Keep row density high enough that folder structure and account lists remain visible without scrolling immediately
-- Do not hide the settings entry point
+- 界面要紧凑、安静、稍微有一点技术感
+- 让人感觉像浏览器扩展，而不是 dashboard
+- 主要区域用较小圆角、紧凑间距和克制的外观
+- 主使用视图里不要出现右侧很大的详情面板
+- 保持足够的行密度，让用户不必立刻滚动就能看懂结构
+- 不要隐藏设置入口
 
-## Behavioral Requirements
+## 行为规则
 
-- Successful unlock should continue to cache the unlocked vault and master password only for the current browser session
-- Saving should not require re-entering the master password during the same session
-- WebDAV root remains fixed as `PasswordWebDAV/`
-- Only the vault subpath under that root is user-configurable
-- Auto-create missing WebDAV directories must continue to work
-- Save-detected-login behavior must not regress
+- 解锁成功后，当前浏览器会话内继续缓存已解锁 vault 和主密码
+- 保存后不应该在同一会话里反复要求重新输入主密码
+- WebDAV 根目录固定为 `PasswordWebDAV/`
+- 用户只能配置这个根目录下的子路径
+- 缺失的 WebDAV 目录仍然要自动创建
+- 识别到登录信息后的保存流程不能回退
 
-## File and Module Impact
+## 文件影响
 
-Expected primary implementation files:
+主要会改的文件：
 
 - `apps/extension/src/popup.tsx`
 - `apps/extension/src/popup.css`
-- `apps/extension/src/options.tsx` for fallback/global config parity only
+- `apps/extension/src/options.tsx`，只作为全局配置兜底
 - `apps/extension/src/extensionState.ts`
 - `packages/core/src/folders.ts`
 - `packages/core/src/folders.test.ts`
@@ -283,50 +283,50 @@ Expected primary implementation files:
 - `wiki/Architecture.md`
 - `wiki/FAQ.md`
 
-New components may be introduced if they reduce complexity, but the split should follow clear responsibilities:
+如果需要新增组件，应该围绕清晰职责拆分：
 
-- popup shell and mode switching
-- folder tree
-- account list
-- reveal-password row behavior
-- popup-local settings/detail view
+- popup 壳与模式切换
+- 文件夹树
+- 账号列表
+- 密码显示 / 隐藏行逻辑
+- popup 内部的设置 / 详情视图
 
-## Testing Expectations
+## 测试要求
 
-Testing should cover:
+需要覆盖：
 
-- Folder tree filtering still works
-- Account move to folder works
-- Folder delete still moves descendants to uncategorized
-- Password reveal hides by default and toggles locally
-- Main popup remains usable without the old inline editor
-- Session unlock still avoids repeated master-password prompts until lock or browser restart
+- 文件夹树过滤仍然正确
+- 账号移动到文件夹仍然正确
+- 删除文件夹后，后代条目仍会回到未分类
+- 密码默认隐藏，切换后只在本地 UI 生效
+- 主 popup 不再依赖原来的内联编辑器也能正常使用
+- 同一会话内解锁后不再反复要求主密码，直到锁定或浏览器重启
 
-## Risks
+## 风险
 
-### Settings Scope Confusion
+### 设置范围混淆
 
-The existing codebase already has a Chrome `options_page`, but this redesign chooses the popup-local settings/detail view as the primary path. The Chrome options page may remain for fallback/global config parity, but it must not become the main place where users are expected to manage day-to-day password entries.
+现有代码库已经有 Chrome `options_page`。这次设计明确选择 popup 内的设置 / 详情视图作为主路径。Chrome options page 可以保留为全局配置兜底，但不能变成用户每天管理密码条目的主入口。
 
-### Drag Complexity
+### 拖拽复杂度
 
-Folder path reparenting is more invasive than row-level dragging. The implementation plan should land account dragging before folder dragging so the simpler move flow is stable first.
+文件夹路径重写比行级拖拽更复杂。实现计划里要先把账号拖拽做稳，再做文件夹拖拽。
 
-### Popup Size Constraints
+### popup 尺寸限制
 
-Chrome popup sizing is constrained by the browser. The layout must be compact by design and should not assume user-resizable width.
+Chrome popup 本身就有尺寸限制，不能指望用户手动拉宽。界面必须从设计上就保持紧凑。
 
-## Final Approved Scope For This Iteration
+## 本次迭代确认范围
 
-This implementation iteration should deliver:
+这次实现迭代应该交付：
 
-- extension-only experience
-- compact popup locked state
-- compact popup unlocked state
-- folder view with two columns
-- all-accounts view
-- header settings entry
-- password reveal and hide
-- lightweight main rows
-- detailed editing moved out of the main view
-- docs updated to match the new interaction model
+- 仅保留扩展体验
+- 紧凑的锁定态 popup
+- 紧凑的解锁态 popup
+- 文件夹视图双栏布局
+- 全部账号视图
+- 头部设置入口
+- 密码显示 / 隐藏
+- 轻量化主列表
+- 详细编辑移出主列表
+- 文档同步更新为新的交互模型
