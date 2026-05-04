@@ -1047,19 +1047,20 @@ textarea:focus-visible {
   appearance: none;
   font: inherit;
   width: 100%;
-  min-height: 26px;
+  min-height: 20px;
   display: inline-flex;
   align-items: center;
   justify-content: flex-start;
-  padding: 0 8px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--secret-bg);
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   color: var(--text);
   text-align: left;
   font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
-  font-size: 11px;
-  font-weight: 850;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -1067,15 +1068,13 @@ textarea:focus-visible {
 }
 
 .secret-value.revealed {
-  border-color: var(--line-strong);
-  background: var(--field-bg);
   color: var(--text);
   font-weight: 900;
+  letter-spacing: 0;
 }
 
 .secret-value:hover {
-  border-color: var(--line-strong);
-  color: var(--text);
+  color: var(--accent);
 }
 
 .field {

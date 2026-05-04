@@ -86,20 +86,28 @@ async function loadPromptConfig(): Promise<{ theme: ExtensionTheme; language: Ex
   try {
     const result = await chrome.storage.local.get(CONFIG_KEY);
     const config = result[CONFIG_KEY] as { theme?: unknown; language?: unknown } | undefined;
-    const theme =
-      config?.theme === "night" ||
-      config?.theme === "contrast" ||
-      config?.theme === "tech" ||
-      config?.theme === "forest" ||
-      config?.theme === "amber" ||
-      config?.theme === "graphite"
-        ? config.theme
-        : "fresh";
-    const language = config?.language === "en" ? "en" : "zh";
-    return { theme, language };
+    return {
+      theme: normalizePromptTheme(config?.theme),
+      language: normalizePromptLanguage(config?.language),
+    };
   } catch {
     return { theme: "fresh", language: "zh" };
   }
+}
+
+function normalizePromptTheme(value: unknown): ExtensionTheme {
+  return value === "night" ||
+    value === "contrast" ||
+    value === "tech" ||
+    value === "forest" ||
+    value === "amber" ||
+    value === "graphite"
+    ? value
+    : "fresh";
+}
+
+function normalizePromptLanguage(value: unknown): ExtensionLanguage {
+  return value === "en" ? "en" : "zh";
 }
 
 function dispatchInputEvents(element: HTMLInputElement, value: string) {
@@ -241,14 +249,16 @@ function createButton(label: string, variant: "primary" | "secondary") {
   const button = document.createElement("button");
   button.type = "button";
   button.textContent = label;
-  button.style.height = "34px";
-  button.style.borderRadius = "6px";
-  button.style.fontWeight = "700";
+  button.style.height = "36px";
+  button.style.padding = "0 12px";
+  button.style.borderRadius = "8px";
+  button.style.fontWeight = "800";
   button.style.cursor = "pointer";
+  button.style.transition = "background .16s ease,border-color .16s ease,color .16s ease,transform .16s ease";
 
   if (variant === "primary") {
     button.style.flex = "1";
-    button.style.border = "0";
+    button.style.border = "1px solid transparent";
     button.style.background = "var(--pwd-primary)";
     button.style.color = "var(--pwd-primary-text)";
   } else {
@@ -261,102 +271,178 @@ function createButton(label: string, variant: "primary" | "secondary") {
 }
 
 function promptThemeVars(theme: ExtensionTheme) {
+  const vars = getPromptThemeVarMap(theme);
+  return Object.entries(vars)
+    .map(([key, value]) => `${key}:${value}`)
+    .join(";");
+}
+
+function applyPromptTheme(element: HTMLElement, theme: ExtensionTheme) {
+  const vars = getPromptThemeVarMap(theme);
+  for (const [key, value] of Object.entries(vars)) {
+    element.style.setProperty(key, value);
+  }
+}
+
+function getPromptThemeVarMap(theme: ExtensionTheme): Record<string, string> {
   if (theme === "night") {
-    return [
-      "--pwd-bg:#121e28",
-      "--pwd-border:#284456",
-      "--pwd-text:#e8f4f6",
-      "--pwd-muted:#9bb4be",
-      "--pwd-field-bg:#0c1720",
-      "--pwd-button-bg:#182936",
-      "--pwd-primary:#2dd4bf",
-      "--pwd-primary-text:#06221f",
-      "--pwd-accent-soft:rgba(45,212,191,.13)",
-      "--pwd-shadow:0 18px 50px rgba(0,0,0,.42)",
-    ].join(";");
+    return {
+      "--pwd-bg": "#121e28",
+      "--pwd-surface": "rgba(18,30,40,.94)",
+      "--pwd-border": "#284456",
+      "--pwd-text": "#e8f4f6",
+      "--pwd-muted": "#9bb4be",
+      "--pwd-field-bg": "rgba(12,23,32,.96)",
+      "--pwd-button-bg": "rgba(24,41,54,.94)",
+      "--pwd-primary": "#2dd4bf",
+      "--pwd-primary-text": "#06221f",
+      "--pwd-accent-soft": "rgba(45,212,191,.13)",
+      "--pwd-hover-bg": "rgba(45,212,191,.12)",
+      "--pwd-focus-ring": "rgba(45,212,191,.22)",
+      "--pwd-shadow": "0 18px 50px rgba(0,0,0,.42)",
+    };
   }
   if (theme === "contrast") {
-    return [
-      "--pwd-bg:#ffffff",
-      "--pwd-border:#9fb6c4",
-      "--pwd-text:#061826",
-      "--pwd-muted:#365363",
-      "--pwd-field-bg:#ffffff",
-      "--pwd-button-bg:#ffffff",
-      "--pwd-primary:#0369a1",
-      "--pwd-primary-text:#ffffff",
-      "--pwd-accent-soft:#e0f2fe",
-      "--pwd-shadow:0 18px 50px rgba(6,24,38,.2)",
-    ].join(";");
+    return {
+      "--pwd-bg": "#ffffff",
+      "--pwd-surface": "rgba(255,255,255,.98)",
+      "--pwd-border": "#9fb6c4",
+      "--pwd-text": "#061826",
+      "--pwd-muted": "#365363",
+      "--pwd-field-bg": "#ffffff",
+      "--pwd-button-bg": "#ffffff",
+      "--pwd-primary": "#0369a1",
+      "--pwd-primary-text": "#ffffff",
+      "--pwd-accent-soft": "#e0f2fe",
+      "--pwd-hover-bg": "#eef8ff",
+      "--pwd-focus-ring": "rgba(3,105,161,.22)",
+      "--pwd-shadow": "0 18px 50px rgba(6,24,38,.2)",
+    };
   }
   if (theme === "tech") {
-    return [
-      "--pwd-bg:#081221",
-      "--pwd-border:#1b4662",
-      "--pwd-text:#e7f9ff",
-      "--pwd-muted:#8eb6c7",
-      "--pwd-field-bg:#060f1c",
-      "--pwd-button-bg:#0d1c31",
-      "--pwd-primary:#22d3ee",
-      "--pwd-primary-text:#03131a",
-      "--pwd-accent-soft:rgba(34,211,238,.13)",
-      "--pwd-shadow:0 18px 50px rgba(0,0,0,.46)",
-    ].join(";");
+    return {
+      "--pwd-bg": "#081221",
+      "--pwd-surface": "rgba(8,18,33,.94)",
+      "--pwd-border": "#1b4662",
+      "--pwd-text": "#e7f9ff",
+      "--pwd-muted": "#8eb6c7",
+      "--pwd-field-bg": "rgba(6,15,28,.96)",
+      "--pwd-button-bg": "rgba(13,28,49,.94)",
+      "--pwd-primary": "#22d3ee",
+      "--pwd-primary-text": "#03131a",
+      "--pwd-accent-soft": "rgba(34,211,238,.13)",
+      "--pwd-hover-bg": "rgba(34,211,238,.12)",
+      "--pwd-focus-ring": "rgba(34,211,238,.22)",
+      "--pwd-shadow": "0 18px 50px rgba(0,0,0,.46)",
+    };
   }
   if (theme === "forest") {
-    return [
-      "--pwd-bg:#fdfffa",
-      "--pwd-border:#cbdcc2",
-      "--pwd-text:#20311c",
-      "--pwd-muted:#65795b",
-      "--pwd-field-bg:#fffdf8",
-      "--pwd-button-bg:#f6fbf1",
-      "--pwd-primary:#4d7c0f",
-      "--pwd-primary-text:#ffffff",
-      "--pwd-accent-soft:#eef7e8",
-      "--pwd-shadow:0 18px 50px rgba(32,49,28,.18)",
-    ].join(";");
+    return {
+      "--pwd-bg": "#fdfffa",
+      "--pwd-surface": "rgba(253,255,250,.96)",
+      "--pwd-border": "#cbdcc2",
+      "--pwd-text": "#20311c",
+      "--pwd-muted": "#65795b",
+      "--pwd-field-bg": "#fffdf8",
+      "--pwd-button-bg": "#f6fbf1",
+      "--pwd-primary": "#4d7c0f",
+      "--pwd-primary-text": "#ffffff",
+      "--pwd-accent-soft": "#eef7e8",
+      "--pwd-hover-bg": "#f2f8ed",
+      "--pwd-focus-ring": "rgba(77,124,15,.2)",
+      "--pwd-shadow": "0 18px 50px rgba(32,49,28,.18)",
+    };
   }
   if (theme === "amber") {
-    return [
-      "--pwd-bg:#fffcf4",
-      "--pwd-border:#e3d4ba",
-      "--pwd-text:#3a2a18",
-      "--pwd-muted:#7d684e",
-      "--pwd-field-bg:#fffdf8",
-      "--pwd-button-bg:#fff8eb",
-      "--pwd-primary:#b45309",
-      "--pwd-primary-text:#ffffff",
-      "--pwd-accent-soft:#fff3d6",
-      "--pwd-shadow:0 18px 50px rgba(58,42,24,.18)",
-    ].join(";");
+    return {
+      "--pwd-bg": "#fffcf4",
+      "--pwd-surface": "rgba(255,252,244,.96)",
+      "--pwd-border": "#e3d4ba",
+      "--pwd-text": "#3a2a18",
+      "--pwd-muted": "#7d684e",
+      "--pwd-field-bg": "#fffdf8",
+      "--pwd-button-bg": "#fff8eb",
+      "--pwd-primary": "#b45309",
+      "--pwd-primary-text": "#ffffff",
+      "--pwd-accent-soft": "#fff3d6",
+      "--pwd-hover-bg": "#fff5e3",
+      "--pwd-focus-ring": "rgba(180,83,9,.2)",
+      "--pwd-shadow": "0 18px 50px rgba(58,42,24,.18)",
+    };
   }
   if (theme === "graphite") {
-    return [
-      "--pwd-bg:#1f1f23",
-      "--pwd-border:#4b5563",
-      "--pwd-text:#f4f4f5",
-      "--pwd-muted:#a1a1aa",
-      "--pwd-field-bg:#18181b",
-      "--pwd-button-bg:#27272a",
-      "--pwd-primary:#d4d4d8",
-      "--pwd-primary-text:#18181b",
-      "--pwd-accent-soft:rgba(161,161,170,.16)",
-      "--pwd-shadow:0 18px 50px rgba(0,0,0,.42)",
-    ].join(";");
+    return {
+      "--pwd-bg": "#1f1f23",
+      "--pwd-surface": "rgba(31,31,35,.95)",
+      "--pwd-border": "#4b5563",
+      "--pwd-text": "#f4f4f5",
+      "--pwd-muted": "#a1a1aa",
+      "--pwd-field-bg": "#18181b",
+      "--pwd-button-bg": "#27272a",
+      "--pwd-primary": "#d4d4d8",
+      "--pwd-primary-text": "#18181b",
+      "--pwd-accent-soft": "rgba(161,161,170,.16)",
+      "--pwd-hover-bg": "rgba(161,161,170,.12)",
+      "--pwd-focus-ring": "rgba(212,212,216,.18)",
+      "--pwd-shadow": "0 18px 50px rgba(0,0,0,.42)",
+    };
   }
-  return [
-    "--pwd-bg:#ffffff",
-    "--pwd-border:#cbd5e1",
-    "--pwd-text:#111827",
-    "--pwd-muted:#4b5563",
-    "--pwd-field-bg:#ffffff",
-    "--pwd-button-bg:#f8fafc",
-    "--pwd-primary:#0f766e",
-    "--pwd-primary-text:#ffffff",
-    "--pwd-accent-soft:#edf9f5",
-    "--pwd-shadow:0 18px 50px rgba(15,23,42,.18)",
-  ].join(";");
+  return {
+    "--pwd-bg": "#ffffff",
+    "--pwd-surface": "rgba(255,255,255,.94)",
+    "--pwd-border": "#cbd5e1",
+    "--pwd-text": "#111827",
+    "--pwd-muted": "#4b5563",
+    "--pwd-field-bg": "#ffffff",
+    "--pwd-button-bg": "#f8fafc",
+    "--pwd-primary": "#0f766e",
+    "--pwd-primary-text": "#ffffff",
+    "--pwd-accent-soft": "#edf9f5",
+    "--pwd-hover-bg": "#f2fbf8",
+    "--pwd-focus-ring": "rgba(15,118,110,.18)",
+    "--pwd-shadow": "0 18px 50px rgba(15,23,42,.18)",
+  };
+}
+
+function stylePromptField(field: HTMLInputElement | HTMLSelectElement) {
+  field.style.height = "36px";
+  field.style.padding = "0 10px";
+  field.style.border = "1px solid var(--pwd-border)";
+  field.style.borderRadius = "8px";
+  field.style.background = "var(--pwd-field-bg)";
+  field.style.color = "var(--pwd-text)";
+  field.style.fontWeight = "800";
+  field.style.outline = "none";
+  field.style.boxShadow = "none";
+  field.style.transition = "border-color .16s ease, box-shadow .16s ease, background .16s ease";
+  field.addEventListener("focus", () => {
+    field.style.borderColor = "var(--pwd-primary)";
+    field.style.boxShadow = "0 0 0 3px var(--pwd-focus-ring)";
+  });
+  field.addEventListener("blur", () => {
+    field.style.borderColor = "var(--pwd-border)";
+    field.style.boxShadow = "none";
+  });
+}
+
+function styleSuggestionRow(row: HTMLButtonElement) {
+  row.style.transition = "background .16s ease,border-color .16s ease,transform .16s ease";
+  row.addEventListener("mouseenter", () => {
+    row.style.background = "var(--pwd-hover-bg)";
+    row.style.borderColor = "var(--pwd-primary)";
+  });
+  row.addEventListener("mouseleave", () => {
+    row.style.background = "linear-gradient(180deg,var(--pwd-accent-soft),var(--pwd-button-bg))";
+    row.style.borderColor = "var(--pwd-border)";
+  });
+  row.addEventListener("focus", () => {
+    row.style.background = "var(--pwd-hover-bg)";
+    row.style.borderColor = "var(--pwd-primary)";
+  });
+  row.addEventListener("blur", () => {
+    row.style.background = "linear-gradient(180deg,var(--pwd-accent-soft),var(--pwd-button-bg))";
+    row.style.borderColor = "var(--pwd-border)";
+  });
 }
 
 function renderSuggestionPrompt(
@@ -381,9 +467,9 @@ function renderSuggestionPrompt(
     "width:min(360px, calc(100vw - 24px))",
     "padding:10px",
     "border:1px solid var(--pwd-border)",
-    "border-radius:8px",
-    "background:color-mix(in srgb, var(--pwd-bg) 94%, transparent)",
-    "backdrop-filter:blur(14px)",
+    "border-radius:10px",
+    "background:var(--pwd-surface)",
+    "backdrop-filter:blur(18px)",
     "box-shadow:var(--pwd-shadow)",
     "font:13px system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",
     "color:var(--pwd-text)",
@@ -421,14 +507,15 @@ function renderSuggestionPrompt(
       "gap:2px",
       "width:100%",
       "border:1px solid var(--pwd-border)",
-      "border-radius:6px",
+      "border-radius:8px",
       "padding:9px 10px",
       "background:linear-gradient(180deg,var(--pwd-accent-soft),var(--pwd-button-bg))",
       "color:var(--pwd-text)",
       "cursor:pointer",
       "text-align:left",
-      "box-shadow:inset 0 1px 0 rgba(255,255,255,.18)",
+      "box-shadow:inset 0 1px 0 rgba(255,255,255,.12)",
     ].join(";");
+    styleSuggestionRow(row);
 
     const firstLine = document.createElement("div");
     firstLine.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:8px;font-weight:800";
@@ -570,11 +657,12 @@ async function showSavePrompt() {
     "right:18px",
     "bottom:18px",
     "z-index:2147483647",
-    "width:320px",
-    "padding:14px",
+    "width:min(332px, calc(100vw - 24px))",
+    "padding:14px 14px 12px",
     "border:1px solid var(--pwd-border)",
-    "border-radius:8px",
-    "background:var(--pwd-bg)",
+    "border-radius:10px",
+    "background:var(--pwd-surface)",
+    "backdrop-filter:blur(18px)",
     "box-shadow:var(--pwd-shadow)",
     "font:14px system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",
     "color:var(--pwd-text)",
@@ -597,7 +685,7 @@ async function showSavePrompt() {
   titleInput.type = "text";
   titleInput.placeholder = text.titlePlaceholder;
   titleInput.value = folderOptions.defaultTitle || candidate.title || location.hostname;
-  titleInput.style.cssText = "height:34px;border:1px solid var(--pwd-border);border-radius:6px;padding:0 10px;background:var(--pwd-field-bg);color:var(--pwd-text);font-weight:800";
+  stylePromptField(titleInput);
   titleField.appendChild(titleInput);
 
   const folderField = document.createElement("label");
@@ -605,7 +693,7 @@ async function showSavePrompt() {
   appendText(folderField, text.folder);
 
   const folderSelect = document.createElement("select");
-  folderSelect.style.cssText = "height:34px;border:1px solid var(--pwd-border);border-radius:6px;padding:0 10px;background:var(--pwd-field-bg);color:var(--pwd-text);font-weight:800";
+  stylePromptField(folderSelect);
 
   const rootOption = document.createElement("option");
   rootOption.value = "";
@@ -625,13 +713,14 @@ async function showSavePrompt() {
   const actions = document.createElement("div");
   actions.style.display = "flex";
   actions.style.gap = "8px";
+  actions.style.marginTop = "2px";
 
   const saveButton = createButton(text.save, "primary");
   const dismissButton = createButton(text.dismiss, "secondary");
   actions.append(saveButton, dismissButton);
 
   const status = document.createElement("div");
-  status.style.cssText = "font-size:12px;color:var(--pwd-muted);margin-top:8px";
+  status.style.cssText = "font-size:12px;color:var(--pwd-muted);margin-top:8px;min-height:18px";
 
   promptEl.append(title, account, titleField, folderField, actions, status);
 
@@ -789,6 +878,19 @@ window.setTimeout(() => {
     void showSavePrompt();
   });
 }, 800);
+
+chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName !== "local" || !changes[CONFIG_KEY]) return;
+  const nextTheme = normalizePromptTheme(
+    (changes[CONFIG_KEY].newValue as { theme?: unknown } | undefined)?.theme,
+  );
+  if (promptEl) {
+    applyPromptTheme(promptEl, nextTheme);
+  }
+  if (suggestionEl) {
+    applyPromptTheme(suggestionEl, nextTheme);
+  }
+});
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type === "password-webdav.fill-entry") {

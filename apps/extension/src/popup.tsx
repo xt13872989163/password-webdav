@@ -1084,7 +1084,7 @@ function PopupApp() {
                     void copyToClipboard(entry.password, text.password);
                   }}
                 >
-                  {revealed ? entry.password : "••••••••••••"}
+                  {revealed ? entry.password : "****"}
                 </button>
                 <button
                   type="button"
