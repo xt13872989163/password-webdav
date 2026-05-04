@@ -180,7 +180,7 @@ async function showSavePrompt() {
   appendText(title, "保存到 Password WebDAV？");
 
   const account = document.createElement("div");
-  account.style.cssText = "font-size:12px;color:#4b5563;margin-bottom:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap";
+  account.style.cssText = "font-size:13px;font-weight:800;color:#1f2937;margin-bottom:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap";
   appendText(account, candidate.username || location.hostname);
 
   const titleField = document.createElement("label");
@@ -191,7 +191,7 @@ async function showSavePrompt() {
   titleInput.type = "text";
   titleInput.placeholder = "例如 GitHub";
   titleInput.value = folderOptions.defaultTitle || candidate.title || location.hostname;
-  titleInput.style.cssText = "height:34px;border:1px solid #cbd5e1;border-radius:6px;padding:0 10px;background:#fff;color:#111827";
+  titleInput.style.cssText = "height:34px;border:1px solid #cbd5e1;border-radius:6px;padding:0 10px;background:#fff;color:#111827;font-weight:800";
   titleField.appendChild(titleInput);
 
   const folderField = document.createElement("label");
@@ -199,7 +199,7 @@ async function showSavePrompt() {
   appendText(folderField, "文件夹");
 
   const folderSelect = document.createElement("select");
-  folderSelect.style.cssText = "height:34px;border:1px solid #cbd5e1;border-radius:6px;padding:0 10px;background:#fff;color:#111827";
+  folderSelect.style.cssText = "height:34px;border:1px solid #cbd5e1;border-radius:6px;padding:0 10px;background:#fff;color:#111827;font-weight:800";
 
   const rootOption = document.createElement("option");
   rootOption.value = "";

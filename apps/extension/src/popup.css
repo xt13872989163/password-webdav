@@ -473,14 +473,16 @@ textarea:focus-visible {
 }
 
 .folder-name {
-  font-weight: 700;
+  font-weight: 850;
+  color: var(--text);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .folder-count {
-  color: var(--muted);
+  color: var(--accent);
+  font-weight: 850;
 }
 
 .row-delete {
@@ -546,13 +548,15 @@ textarea:focus-visible {
 }
 
 .entry-title strong {
-  font-size: 12px;
+  font-size: 13px;
+  font-weight: 850;
   color: var(--text);
 }
 
 .entry-host {
   font-size: 11px;
-  color: #497086;
+  font-weight: 750;
+  color: #315e74;
 }
 
 .entry-username {
@@ -566,8 +570,9 @@ textarea:focus-visible {
   border: 0;
   background: transparent;
   font: inherit;
-  font-size: 10px;
-  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  color: #354f5f;
   text-align: left;
   cursor: pointer;
 }
@@ -714,10 +719,11 @@ textarea:focus-visible {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #f8fbfd;
-  color: #64808c;
+  color: #425f6d;
   text-align: left;
   font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
-  font-size: 10px;
+  font-size: 11px;
+  font-weight: 850;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -728,6 +734,7 @@ textarea:focus-visible {
   border-color: var(--line-strong);
   background: #fff;
   color: var(--text);
+  font-weight: 900;
 }
 
 .secret-value:hover {
