@@ -26,6 +26,7 @@ let suggestionEl: HTMLDivElement | null = null;
 let suggestionAnchor: HTMLInputElement | null = null;
 let suggestionRequestId = 0;
 let suggestionTimer = 0;
+let suppressSuggestionsUntil = 0;
 
 async function loadPromptTheme(): Promise<ExtensionTheme> {
   try {
@@ -76,6 +77,10 @@ function fillEntry(entry: VaultEntry) {
   if (!passwordField) {
     return { ok: false, message: "未找到密码输入框。" };
   }
+
+  suppressSuggestionsUntil = Date.now() + 5000;
+  window.clearTimeout(suggestionTimer);
+  removeSuggestionPrompt();
 
   const usernameField = findUsernameField();
   if (usernameField && entry.username) {
@@ -202,6 +207,7 @@ function promptThemeVars(theme: ExtensionTheme) {
       "--pwd-button-bg:#182936",
       "--pwd-primary:#2dd4bf",
       "--pwd-primary-text:#06221f",
+      "--pwd-accent-soft:rgba(45,212,191,.13)",
       "--pwd-shadow:0 18px 50px rgba(0,0,0,.42)",
     ].join(";");
   }
@@ -215,6 +221,7 @@ function promptThemeVars(theme: ExtensionTheme) {
       "--pwd-button-bg:#ffffff",
       "--pwd-primary:#0369a1",
       "--pwd-primary-text:#ffffff",
+      "--pwd-accent-soft:#e0f2fe",
       "--pwd-shadow:0 18px 50px rgba(6,24,38,.2)",
     ].join(";");
   }
@@ -227,6 +234,7 @@ function promptThemeVars(theme: ExtensionTheme) {
     "--pwd-button-bg:#f8fafc",
     "--pwd-primary:#0f766e",
     "--pwd-primary-text:#ffffff",
+    "--pwd-accent-soft:#edf9f5",
     "--pwd-shadow:0 18px 50px rgba(15,23,42,.18)",
   ].join(";");
 }
@@ -250,20 +258,21 @@ function renderSuggestionPrompt(
     `top:${Math.min(window.innerHeight - 16, rect.bottom + 8)}px`,
     "z-index:2147483647",
     "width:min(360px, calc(100vw - 24px))",
-    "padding:12px",
+    "padding:10px",
     "border:1px solid var(--pwd-border)",
     "border-radius:8px",
-    "background:var(--pwd-bg)",
+    "background:color-mix(in srgb, var(--pwd-bg) 94%, transparent)",
+    "backdrop-filter:blur(14px)",
     "box-shadow:var(--pwd-shadow)",
     "font:13px system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",
     "color:var(--pwd-text)",
   ].join(";");
 
   const header = document.createElement("div");
-  header.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px";
+  header.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;padding:0 2px";
 
   const title = document.createElement("div");
-  title.style.cssText = "font-weight:800";
+  title.style.cssText = "font-weight:800;color:var(--pwd-text)";
   title.textContent = entries.length ? "可填充账号" : "Password WebDAV";
 
   const host = document.createElement("div");
@@ -292,11 +301,12 @@ function renderSuggestionPrompt(
       "width:100%",
       "border:1px solid var(--pwd-border)",
       "border-radius:6px",
-      "padding:10px 12px",
-      "background:var(--pwd-button-bg)",
+      "padding:9px 10px",
+      "background:linear-gradient(180deg,var(--pwd-accent-soft),var(--pwd-button-bg))",
       "color:var(--pwd-text)",
       "cursor:pointer",
       "text-align:left",
+      "box-shadow:inset 0 1px 0 rgba(255,255,255,.18)",
     ].join(";");
 
     const firstLine = document.createElement("div");
@@ -376,6 +386,11 @@ async function updateAutofillSuggestions(anchor: HTMLInputElement) {
 }
 
 function scheduleAutofillSuggestions(anchor: HTMLInputElement) {
+  if (Date.now() < suppressSuggestionsUntil) {
+    removeSuggestionPrompt();
+    return;
+  }
+
   if (!isLoginCandidateInput(anchor)) {
     removeSuggestionPrompt();
     return;
@@ -406,11 +421,19 @@ async function showSavePrompt() {
     folders?: string[];
     defaultFolder?: string;
     defaultTitle?: string;
+    alreadySaved?: boolean;
   }>({
     type: "password-webdav.get-detected-login-folder-options",
     entry: candidate,
   })) || { folders: [], defaultFolder: "", defaultTitle: "" };
   const promptTheme = await loadPromptTheme();
+
+  if (folderOptions.alreadySaved) {
+    await sendRuntimeMessage({ type: "password-webdav.dismiss-detected-login" });
+    lastCandidate = null;
+    promptLoading = false;
+    return;
+  }
 
   if (promptEl) {
     promptLoading = false;
