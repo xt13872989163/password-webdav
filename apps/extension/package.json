@@ -1,6 +1,6 @@
 {
   "name": "@password-webdav/extension",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -9,6 +9,6 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
-    "@password-webdav/core": "0.1.0"
+    "@password-webdav/core": "1.0.0"
   }
 }
