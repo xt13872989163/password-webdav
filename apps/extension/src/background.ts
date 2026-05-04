@@ -1,6 +1,8 @@
 import {
   decryptVault,
   encryptVault,
+  entryMatchesHost,
+  sortEntriesForHost,
   loadVaultFile,
   mergeVaultFolders,
   normalizeFolderPath,
@@ -22,6 +24,11 @@ interface DetectedLoginCandidate {
   title: string;
   detectedAt: string;
   folder: string;
+}
+
+interface AutofillSuggestionRequest {
+  url: string;
+  usernameQuery?: string;
 }
 
 let sessionMasterPassword = "";
@@ -128,6 +135,30 @@ function upsertByUrlAndUsername(vault: PlainVault, nextEntry: VaultEntry) {
   };
 }
 
+async function getAutofillSuggestions(value: unknown) {
+  const vault = await loadUnlockedVault();
+  if (!vault) {
+    return { ok: false, reason: "locked", entries: [] as VaultEntry[] };
+  }
+
+  const request = value as Partial<AutofillSuggestionRequest> | undefined;
+  const url = String(request?.url || "");
+  const usernameQuery = String(request?.usernameQuery || "").trim().toLowerCase();
+  const host = urlOrigin(url) || url;
+  const hostMatches = sortEntriesForHost(vault.entries, host)
+    .filter((entry) => entryMatchesHost(entry, host))
+    .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+
+  const entries = hostMatches
+    .filter((entry) => {
+      if (!usernameQuery) return true;
+      return entry.username.toLowerCase().includes(usernameQuery) || entry.title.toLowerCase().includes(usernameQuery);
+    })
+    .slice(0, 5);
+
+  return { ok: true, reason: entries.length ? "matched" : "no-match", entries };
+}
+
 async function getSessionMasterPassword() {
   if (sessionMasterPassword) return sessionMasterPassword;
   sessionMasterPassword = await loadSessionMasterPassword();
@@ -214,6 +245,20 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     void getDetectedLoginFolderOptions(message.entry)
       .then((options) => sendResponse({ ok: true, ...options }))
       .catch(() => sendResponse({ ok: true, folders: [], defaultFolder: "", defaultTitle: "" }));
+    return true;
+  }
+
+  if (message?.type === "password-webdav.get-autofill-suggestions") {
+    void getAutofillSuggestions(message)
+      .then((result) => sendResponse(result))
+      .catch((error) =>
+        sendResponse({
+          ok: false,
+          reason: "error",
+          message: error instanceof Error ? error.message : "读取自动填充建议失败。",
+          entries: [],
+        }),
+      );
     return true;
   }
 

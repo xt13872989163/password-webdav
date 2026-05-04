@@ -9,9 +9,20 @@ interface DetectedLoginCandidate {
   folder?: string;
 }
 
+interface AutofillSuggestionResponse {
+  ok?: boolean;
+  reason?: "locked" | "matched" | "no-match" | "error";
+  entries?: VaultEntry[];
+  message?: string;
+}
+
 let lastCandidate: DetectedLoginCandidate | null = null;
 let promptEl: HTMLDivElement | null = null;
 let promptLoading = false;
+let suggestionEl: HTMLDivElement | null = null;
+let suggestionAnchor: HTMLInputElement | null = null;
+let suggestionRequestId = 0;
+let suggestionTimer = 0;
 
 function dispatchInputEvents(element: HTMLInputElement, value: string) {
   const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
@@ -107,9 +118,37 @@ async function stageCandidate(candidate: DetectedLoginCandidate | null) {
   });
 }
 
+function isLikelyUsernameField(input: HTMLInputElement) {
+  const autocomplete = input.getAttribute("autocomplete")?.toLowerCase() || "";
+  const name = `${input.name} ${input.id} ${input.placeholder}`.toLowerCase();
+  return (
+    autocomplete.includes("username") ||
+    autocomplete.includes("email") ||
+    /user|login|account|email|mail/.test(name) ||
+    input.type === "email" ||
+    input.type === "text" ||
+    input.type === "search"
+  );
+}
+
+function isLoginCandidateInput(input: HTMLInputElement) {
+  if (!visibleInput(input)) return false;
+  if (input.type === "password") return true;
+  if (input.type === "hidden" || input.type === "checkbox" || input.type === "radio") return false;
+  const form = input.form;
+  if (form && findPasswordField(form)) return true;
+  return isLikelyUsernameField(input);
+}
+
 function removePrompt() {
   promptEl?.remove();
   promptEl = null;
+}
+
+function removeSuggestionPrompt() {
+  suggestionEl?.remove();
+  suggestionEl = null;
+  suggestionAnchor = null;
 }
 
 function appendText(parent: HTMLElement, text: string) {
@@ -177,6 +216,173 @@ function promptThemeVars(theme: ExtensionTheme) {
     "--pwd-primary-text:#ffffff",
     "--pwd-shadow:0 18px 50px rgba(15,23,42,.18)",
   ].join(";");
+}
+
+function renderSuggestionPrompt(
+  anchor: HTMLInputElement,
+  entries: VaultEntry[],
+  message = "",
+  theme: ExtensionTheme = "fresh",
+) {
+  removeSuggestionPrompt();
+  const rect = anchor.getBoundingClientRect();
+  if (!rect.width || !rect.height) return;
+
+  suggestionAnchor = anchor;
+  suggestionEl = document.createElement("div");
+  suggestionEl.style.cssText = [
+    promptThemeVars(theme),
+    "position:fixed",
+    `left:${Math.max(12, Math.min(rect.left, window.innerWidth - 372))}px`,
+    `top:${Math.min(window.innerHeight - 16, rect.bottom + 8)}px`,
+    "z-index:2147483647",
+    "width:min(360px, calc(100vw - 24px))",
+    "padding:12px",
+    "border:1px solid var(--pwd-border)",
+    "border-radius:8px",
+    "background:var(--pwd-bg)",
+    "box-shadow:var(--pwd-shadow)",
+    "font:13px system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",
+    "color:var(--pwd-text)",
+  ].join(";");
+
+  const header = document.createElement("div");
+  header.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px";
+
+  const title = document.createElement("div");
+  title.style.cssText = "font-weight:800";
+  title.textContent = entries.length ? "可填充账号" : "Password WebDAV";
+
+  const host = document.createElement("div");
+  host.style.cssText = "font-size:12px;color:var(--pwd-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis";
+  host.textContent = location.hostname;
+  header.append(title, host);
+
+  const list = document.createElement("div");
+  list.style.cssText = "display:flex;flex-direction:column;gap:8px";
+
+  if (!entries.length && message) {
+    const status = document.createElement("div");
+    status.style.cssText = "font-size:12px;line-height:1.5;color:var(--pwd-muted)";
+    status.textContent = message;
+    list.appendChild(status);
+  }
+
+  for (const entry of entries.slice(0, 5)) {
+    const row = document.createElement("button");
+    row.type = "button";
+    row.style.cssText = [
+      "display:flex",
+      "flex-direction:column",
+      "align-items:stretch",
+      "gap:2px",
+      "width:100%",
+      "border:1px solid var(--pwd-border)",
+      "border-radius:6px",
+      "padding:10px 12px",
+      "background:var(--pwd-button-bg)",
+      "color:var(--pwd-text)",
+      "cursor:pointer",
+      "text-align:left",
+    ].join(";");
+
+    const firstLine = document.createElement("div");
+    firstLine.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:8px;font-weight:800";
+
+    const titleText = document.createElement("span");
+    titleText.style.cssText = "overflow:hidden;text-overflow:ellipsis;white-space:nowrap";
+    titleText.textContent = entry.title || entry.url;
+
+    const userText = document.createElement("span");
+    userText.style.cssText = "font-size:12px;color:var(--pwd-muted);font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis";
+    userText.textContent = entry.username || "未填写账号";
+    firstLine.append(titleText, userText);
+
+    const secondLine = document.createElement("div");
+    secondLine.style.cssText = "font-size:12px;color:var(--pwd-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis";
+    secondLine.textContent = `${entry.url || location.hostname}${entry.folder ? ` · ${entry.folder}` : ""}`;
+
+    row.append(firstLine, secondLine);
+    row.addEventListener("mousedown", (event) => event.preventDefault());
+    row.addEventListener("click", () => {
+      fillEntry(entry);
+      removeSuggestionPrompt();
+    });
+    list.appendChild(row);
+  }
+
+  suggestionEl.append(header, list);
+  document.documentElement.appendChild(suggestionEl);
+}
+
+async function updateAutofillSuggestions(anchor: HTMLInputElement) {
+  if (!isLoginCandidateInput(anchor)) {
+    removeSuggestionPrompt();
+    return;
+  }
+
+  const passwordField = findPasswordField(anchor.form ?? document);
+  if (!passwordField) {
+    removeSuggestionPrompt();
+    return;
+  }
+
+  const requestId = ++suggestionRequestId;
+  const response = await sendRuntimeMessage<AutofillSuggestionResponse>({
+    type: "password-webdav.get-autofill-suggestions",
+    url: location.href,
+    usernameQuery: anchor.type === "password" ? "" : anchor.value.trim(),
+  });
+
+  if (requestId !== suggestionRequestId) return;
+  const theme = await loadExtensionConfig()
+    .then((config) => config.theme)
+    .catch(() => "fresh" as ExtensionTheme);
+
+  if (!response?.ok) {
+    removeSuggestionPrompt();
+    if (response?.reason === "locked") {
+      console.info("[Password WebDAV] autofill unavailable until unlocked", { host: location.hostname });
+      if (anchor.type === "password" || anchor.value.trim()) {
+        renderSuggestionPrompt(anchor, [], "请先打开扩展并解锁 Password WebDAV，解锁后会自动显示匹配账号。", theme);
+      }
+    }
+    return;
+  }
+
+  const entries = response.entries ?? [];
+  if (!entries.length) {
+    removeSuggestionPrompt();
+    return;
+  }
+
+  console.info("[Password WebDAV] autofill suggestions ready", {
+    host: location.hostname,
+    count: entries.length,
+    reason: response.reason || "matched",
+  });
+  renderSuggestionPrompt(anchor, entries, "", theme);
+}
+
+function scheduleAutofillSuggestions(anchor: HTMLInputElement) {
+  if (!isLoginCandidateInput(anchor)) {
+    removeSuggestionPrompt();
+    return;
+  }
+  suggestionAnchor = anchor;
+  window.clearTimeout(suggestionTimer);
+  suggestionTimer = window.setTimeout(() => {
+    void updateAutofillSuggestions(anchor);
+  }, 180);
+}
+
+function hideSuggestionPromptSoon() {
+  window.clearTimeout(suggestionTimer);
+  suggestionTimer = window.setTimeout(() => {
+    if (!suggestionAnchor || !document.contains(suggestionAnchor) || !suggestionAnchor.matches(":focus")) {
+      removeSuggestionPrompt();
+    }
+  }, 180);
 }
 
 async function showSavePrompt() {
@@ -339,8 +545,13 @@ document.addEventListener(
   "input",
   (event) => {
     const target = event.target;
-    if (target instanceof HTMLInputElement && target.type === "password") {
-      rememberCandidate(candidateFromPasswordInput(target));
+    if (target instanceof HTMLInputElement) {
+      if (target.type === "password") {
+        rememberCandidate(candidateFromPasswordInput(target));
+      }
+      if (isLoginCandidateInput(target)) {
+        scheduleAutofillSuggestions(target);
+      }
     }
   },
   true,
@@ -350,8 +561,35 @@ document.addEventListener(
   "change",
   (event) => {
     const target = event.target;
-    if (target instanceof HTMLInputElement && target.type === "password") {
-      rememberCandidate(candidateFromPasswordInput(target));
+    if (target instanceof HTMLInputElement) {
+      if (target.type === "password") {
+        rememberCandidate(candidateFromPasswordInput(target));
+      }
+      if (isLoginCandidateInput(target)) {
+        scheduleAutofillSuggestions(target);
+      }
+    }
+  },
+  true,
+);
+
+document.addEventListener(
+  "focusin",
+  (event) => {
+    const target = event.target;
+    if (target instanceof HTMLInputElement && isLoginCandidateInput(target)) {
+      scheduleAutofillSuggestions(target);
+    }
+  },
+  true,
+);
+
+document.addEventListener(
+  "focusout",
+  (event) => {
+    const target = event.target;
+    if (target instanceof HTMLInputElement && target === suggestionAnchor) {
+      hideSuggestionPromptSoon();
     }
   },
   true,
@@ -374,6 +612,14 @@ document.addEventListener(
       void stageCandidate(candidateFromPasswordInput(passwordField));
       showPromptWhenLoginPageDisappears();
     }
+  },
+  true,
+);
+
+document.addEventListener(
+  "scroll",
+  () => {
+    hideSuggestionPromptSoon();
   },
   true,
 );
