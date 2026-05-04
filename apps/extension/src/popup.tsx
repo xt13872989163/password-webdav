@@ -1236,26 +1236,6 @@ function PopupApp() {
             <span>{text.masterPassword}</span>
             <input type="password" value={masterPassword} onChange={(event) => setMasterPassword(event.target.value)} />
           </label>
-          <label className="field">
-            <span>{text.theme}</span>
-            <select value={settings.theme} onChange={(event) => setSettings({ ...settings, theme: event.target.value as ExtensionConfig["theme"] })}>
-              {EXTENSION_THEMES.map((theme) => (
-                <option key={theme.value} value={theme.value}>
-                  {getThemeLabel(theme.value, settings.language)}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="field">
-            <span>{text.language}</span>
-            <select value={settings.language} onChange={(event) => setSettings({ ...settings, language: event.target.value as ExtensionConfig["language"] })}>
-              {EXTENSION_LANGUAGES.map((language) => (
-                <option key={language.value} value={language.value}>
-                  {language.label}
-                </option>
-              ))}
-            </select>
-          </label>
           <div className="unlock-footer">
             <div className="unlock-status" aria-live="polite">
               {status || (busy ? text.processingWait : text.unlockHint)}
@@ -1267,32 +1247,24 @@ function PopupApp() {
           </div>
         </section>
 
-        <p className="status">
-          {status
-            ? text.debugHint
-            : text.stuckHint}
-        </p>
-
-        <section className="panel-card debug-panel">
-          <div className="panel-header">
-            <div>
-              <strong>{text.debugLog}</strong>
-              <span>{text.debugLogHint}</span>
+        <details className="debug-disclosure">
+          <summary>
+            <span>{text.debugLog}</span>
+            <span>{text.debugLogHint}</span>
+          </summary>
+          <div className="debug-log debug-log-compact">
+            <div className="debug-log-actions">
+              <button type="button" className="text-button" onClick={clearDebugLog}>
+                {text.clear}
+              </button>
             </div>
-            <button type="button" className="text-button" onClick={clearDebugLog}>
-              {text.clear}
-            </button>
-          </div>
-          <div className="debug-log">
             {debugLog.length > 0 ? (
-              debugLog.map((line, index) => (
-                <p key={`${line}-${index}`}>{line}</p>
-              ))
+              debugLog.map((line, index) => <p key={`${line}-${index}`}>{line}</p>)
             ) : (
               <p>{text.emptyDebugLog}</p>
             )}
           </div>
-        </section>
+        </details>
       </main>
     );
   }

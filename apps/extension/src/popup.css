@@ -175,6 +175,7 @@
 body {
   margin: 0;
   background: transparent;
+  overflow-x: hidden;
 }
 
 button,
@@ -214,9 +215,9 @@ textarea:focus-visible {
 }
 
 .unlock-shell {
-  width: 520px;
-  max-height: 680px;
-  overflow: auto;
+  width: min(520px, calc(100vw - 24px));
+  max-height: none;
+  overflow: visible;
 }
 
 .unlock-panel {
@@ -227,25 +228,70 @@ textarea:focus-visible {
 
 .unlock-panel .field:first-child,
 .unlock-panel .field:nth-of-type(4),
-.unlock-panel .field:nth-of-type(5),
-.unlock-panel .field:nth-of-type(6),
 .unlock-panel .field-help,
 .unlock-panel .unlock-footer {
   grid-column: 1 / -1;
 }
 
-.debug-panel {
+.debug-panel,
+.debug-disclosure {
   margin-top: 10px;
 }
 
+.debug-disclosure {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.debug-disclosure summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 34px;
+  padding: 0 10px;
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 850;
+  cursor: pointer;
+  list-style: none;
+}
+
+.debug-disclosure summary::-webkit-details-marker {
+  display: none;
+}
+
+.debug-disclosure summary span:last-child {
+  min-width: 0;
+  color: var(--muted);
+  font-weight: 650;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.debug-disclosure[open] summary {
+  border-bottom: 1px solid var(--line);
+}
+
+.debug-log-compact {
+  padding: 8px;
+}
+
+.debug-log-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
 .manager-shell {
-  width: 520px;
+  width: min(520px, calc(100vw - 24px));
   max-height: 680px;
   overflow: auto;
 }
 
 .options-shell {
-  width: min(640px, 100%);
+  width: min(640px, calc(100vw - 24px));
   display: grid;
   gap: 12px;
 }
