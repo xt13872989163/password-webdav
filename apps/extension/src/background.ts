@@ -17,6 +17,40 @@ import { loadExtensionConfig, loadSessionMasterPassword, loadUnlockedVault, save
 const PENDING_LOGIN_KEY = "password-webdav.extension.pendingLogin";
 const PENDING_LOGIN_MAX_AGE_MS = 5 * 60 * 1000;
 
+type ExtensionLanguage = "zh" | "en";
+
+const BACKGROUND_TEXT: Record<
+  ExtensionLanguage,
+  {
+    invalidCandidate: string;
+    unlockBeforeSave: string;
+    vaultLocked: string;
+    stageFailed: string;
+    suggestionsFailed: string;
+    saved: string;
+    saveFailed: string;
+  }
+> = {
+  zh: {
+    invalidCandidate: "没有识别到可保存的登录信息。",
+    unlockBeforeSave: "请先打开插件并解锁 vault，再保存密码。",
+    vaultLocked: "vault 还没有解锁。",
+    stageFailed: "暂存登录信息失败。",
+    suggestionsFailed: "读取自动填充建议失败。",
+    saved: "已保存到 Password WebDAV。",
+    saveFailed: "保存失败。",
+  },
+  en: {
+    invalidCandidate: "No savable login information was detected.",
+    unlockBeforeSave: "Open the extension and unlock the vault before saving this password.",
+    vaultLocked: "The vault is not unlocked.",
+    stageFailed: "Failed to stage login information.",
+    suggestionsFailed: "Failed to read autofill suggestions.",
+    saved: "Saved to Password WebDAV.",
+    saveFailed: "Save failed.",
+  },
+};
+
 interface DetectedLoginCandidate {
   username: string;
   password: string;
@@ -45,12 +79,12 @@ function urlOrigin(value: string) {
   }
 }
 
-function normalizeCandidate(value: unknown): DetectedLoginCandidate {
+function normalizeCandidate(value: unknown, language: ExtensionLanguage = "zh"): DetectedLoginCandidate {
   const candidate = value as Partial<DetectedLoginCandidate> | undefined;
   const password = String(candidate?.password || "");
   const url = String(candidate?.url || "");
   if (!password || !urlOrigin(url)) {
-    throw new Error("没有识别到可保存的登录信息。");
+    throw new Error(BACKGROUND_TEXT[language].invalidCandidate);
   }
 
   return {
@@ -165,11 +199,21 @@ async function getSessionMasterPassword() {
   return sessionMasterPassword;
 }
 
+async function getBackgroundLanguage(): Promise<ExtensionLanguage> {
+  try {
+    const settings = await loadExtensionConfig();
+    return settings.language === "en" ? "en" : "zh";
+  } catch {
+    return "zh";
+  }
+}
+
 async function getDetectedLoginFolderOptions(value: unknown) {
   const vault = await loadUnlockedVault();
   if (!vault) return { folders: [] as string[], defaultFolder: "", defaultTitle: "", alreadySaved: false };
 
-  const candidate = normalizeCandidate(value);
+  const language = await getBackgroundLanguage();
+  const candidate = normalizeCandidate(value, language);
   const existing = vault.entries.find(
     (entry) => entry.url === candidate.url && entry.username === candidate.username,
   );
@@ -182,24 +226,27 @@ async function getDetectedLoginFolderOptions(value: unknown) {
 }
 
 async function saveDetectedLogin(value: unknown) {
+  const language = await getBackgroundLanguage();
+  const text = BACKGROUND_TEXT[language];
   const masterPassword = await getSessionMasterPassword();
   if (!masterPassword) {
-    throw new Error("请先打开插件并解锁 vault，再保存密码。");
+    throw new Error(text.unlockBeforeSave);
   }
 
   const vault = await loadUnlockedVault();
   if (!vault) {
-    throw new Error("vault 还没有解锁。");
+    throw new Error(text.vaultLocked);
   }
 
   const settings = await loadExtensionConfig();
   const latestFile = await loadVaultFile(settings);
   const latestVault = latestFile ? await decryptVault(masterPassword, latestFile) : vault;
-  const candidate = normalizeCandidate(value);
+  const candidate = normalizeCandidate(value, language);
   const nextVault = upsertByUrlAndUsername(latestVault, entryFromCandidate(candidate));
   await saveVaultFile(settings, await encryptVault(masterPassword, nextVault));
   await saveUnlockedVault(nextVault);
   await clearPendingLogin();
+  return text.saved;
 }
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
@@ -218,15 +265,16 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
   if (message?.type === "password-webdav.stage-detected-login") {
     void Promise.resolve()
-      .then(() => normalizeCandidate(message.entry))
+      .then(async () => normalizeCandidate(message.entry, await getBackgroundLanguage()))
       .then(savePendingLogin)
       .then(() => sendResponse({ ok: true }))
-      .catch((error) =>
+      .catch(async (error) => {
+        const text = BACKGROUND_TEXT[await getBackgroundLanguage()];
         sendResponse({
           ok: false,
-          message: error instanceof Error ? error.message : "暂存登录信息失败。",
-        }),
-      );
+          message: error instanceof Error ? error.message : text.stageFailed,
+        });
+      });
     return true;
   }
 
@@ -252,26 +300,28 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type === "password-webdav.get-autofill-suggestions") {
     void getAutofillSuggestions(message)
       .then((result) => sendResponse(result))
-      .catch((error) =>
+      .catch(async (error) => {
+        const text = BACKGROUND_TEXT[await getBackgroundLanguage()];
         sendResponse({
           ok: false,
           reason: "error",
-          message: error instanceof Error ? error.message : "读取自动填充建议失败。",
+          message: error instanceof Error ? error.message : text.suggestionsFailed,
           entries: [],
-        }),
-      );
+        });
+      });
     return true;
   }
 
   if (message?.type === "password-webdav.save-detected-login") {
     void saveDetectedLogin(message.entry)
-      .then(() => sendResponse({ ok: true, message: "已保存到 Password WebDAV。" }))
-      .catch((error) =>
+      .then((message) => sendResponse({ ok: true, message }))
+      .catch(async (error) => {
+        const text = BACKGROUND_TEXT[await getBackgroundLanguage()];
         sendResponse({
           ok: false,
-          message: error instanceof Error ? error.message : "保存失败。",
-        }),
-      );
+          message: error instanceof Error ? error.message : text.saveFailed,
+        });
+      });
     return true;
   }
 

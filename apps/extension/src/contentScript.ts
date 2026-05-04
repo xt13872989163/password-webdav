@@ -1,6 +1,7 @@
 import type { VaultEntry } from "@password-webdav/core";
 
-type ExtensionTheme = "fresh" | "night" | "contrast";
+type ExtensionTheme = "fresh" | "night" | "contrast" | "tech" | "forest" | "amber" | "graphite";
+type ExtensionLanguage = "zh" | "en";
 
 const CONFIG_KEY = "password-webdav.extension.config";
 
@@ -28,13 +29,76 @@ let suggestionRequestId = 0;
 let suggestionTimer = 0;
 let suppressSuggestionsUntil = 0;
 
-async function loadPromptTheme(): Promise<ExtensionTheme> {
+const CONTENT_TEXT: Record<
+  ExtensionLanguage,
+  {
+    noPasswordField: string;
+    filledPassword: string;
+    fillableAccounts: string;
+    noAccount: string;
+    unlockFirst: string;
+    saveTitle: string;
+    title: string;
+    titlePlaceholder: string;
+    folder: string;
+    noFolder: string;
+    save: string;
+    dismiss: string;
+    saving: string;
+    handled: string;
+  }
+> = {
+  zh: {
+    noPasswordField: "未找到密码输入框。",
+    filledPassword: "已填充密码。",
+    fillableAccounts: "可填充账号",
+    noAccount: "未填写账号",
+    unlockFirst: "请先打开扩展并解锁 Password WebDAV，解锁后会自动显示匹配账号。",
+    saveTitle: "保存到 Password WebDAV？",
+    title: "标题",
+    titlePlaceholder: "例如 GitHub",
+    folder: "文件夹",
+    noFolder: "无文件夹",
+    save: "保存",
+    dismiss: "不保存",
+    saving: "正在保存...",
+    handled: "已处理。",
+  },
+  en: {
+    noPasswordField: "Password field not found.",
+    filledPassword: "Password filled.",
+    fillableAccounts: "Matching accounts",
+    noAccount: "No account",
+    unlockFirst: "Open the extension and unlock Password WebDAV first. Matching accounts will appear after unlock.",
+    saveTitle: "Save to Password WebDAV?",
+    title: "Title",
+    titlePlaceholder: "e.g. GitHub",
+    folder: "Folder",
+    noFolder: "No folder",
+    save: "Save",
+    dismiss: "Don't save",
+    saving: "Saving...",
+    handled: "Done.",
+  },
+};
+
+async function loadPromptConfig(): Promise<{ theme: ExtensionTheme; language: ExtensionLanguage }> {
   try {
     const result = await chrome.storage.local.get(CONFIG_KEY);
-    const theme = (result[CONFIG_KEY] as { theme?: unknown } | undefined)?.theme;
-    return theme === "night" || theme === "contrast" ? theme : "fresh";
+    const config = result[CONFIG_KEY] as { theme?: unknown; language?: unknown } | undefined;
+    const theme =
+      config?.theme === "night" ||
+      config?.theme === "contrast" ||
+      config?.theme === "tech" ||
+      config?.theme === "forest" ||
+      config?.theme === "amber" ||
+      config?.theme === "graphite"
+        ? config.theme
+        : "fresh";
+    const language = config?.language === "en" ? "en" : "zh";
+    return { theme, language };
   } catch {
-    return "fresh";
+    return { theme: "fresh", language: "zh" };
   }
 }
 
@@ -72,10 +136,10 @@ function findUsernameField(root: ParentNode = document) {
   return inputs[0] ?? null;
 }
 
-function fillEntry(entry: VaultEntry) {
+function fillEntry(entry: VaultEntry, text = CONTENT_TEXT.zh) {
   const passwordField = findPasswordField();
   if (!passwordField) {
-    return { ok: false, message: "未找到密码输入框。" };
+    return { ok: false, message: text.noPasswordField };
   }
 
   suppressSuggestionsUntil = Date.now() + 5000;
@@ -89,7 +153,7 @@ function fillEntry(entry: VaultEntry) {
   dispatchInputEvents(passwordField, entry.password);
   passwordField.focus();
   passwordField.select();
-  return { ok: true, message: "已填充密码。", filledUsername: Boolean(usernameField && entry.username) };
+  return { ok: true, message: text.filledPassword, filledUsername: Boolean(usernameField && entry.username) };
 }
 
 function candidateFromPasswordInput(input: HTMLInputElement): DetectedLoginCandidate | null {
@@ -225,6 +289,62 @@ function promptThemeVars(theme: ExtensionTheme) {
       "--pwd-shadow:0 18px 50px rgba(6,24,38,.2)",
     ].join(";");
   }
+  if (theme === "tech") {
+    return [
+      "--pwd-bg:#081221",
+      "--pwd-border:#1b4662",
+      "--pwd-text:#e7f9ff",
+      "--pwd-muted:#8eb6c7",
+      "--pwd-field-bg:#060f1c",
+      "--pwd-button-bg:#0d1c31",
+      "--pwd-primary:#22d3ee",
+      "--pwd-primary-text:#03131a",
+      "--pwd-accent-soft:rgba(34,211,238,.13)",
+      "--pwd-shadow:0 18px 50px rgba(0,0,0,.46)",
+    ].join(";");
+  }
+  if (theme === "forest") {
+    return [
+      "--pwd-bg:#fdfffa",
+      "--pwd-border:#cbdcc2",
+      "--pwd-text:#20311c",
+      "--pwd-muted:#65795b",
+      "--pwd-field-bg:#fffdf8",
+      "--pwd-button-bg:#f6fbf1",
+      "--pwd-primary:#4d7c0f",
+      "--pwd-primary-text:#ffffff",
+      "--pwd-accent-soft:#eef7e8",
+      "--pwd-shadow:0 18px 50px rgba(32,49,28,.18)",
+    ].join(";");
+  }
+  if (theme === "amber") {
+    return [
+      "--pwd-bg:#fffcf4",
+      "--pwd-border:#e3d4ba",
+      "--pwd-text:#3a2a18",
+      "--pwd-muted:#7d684e",
+      "--pwd-field-bg:#fffdf8",
+      "--pwd-button-bg:#fff8eb",
+      "--pwd-primary:#b45309",
+      "--pwd-primary-text:#ffffff",
+      "--pwd-accent-soft:#fff3d6",
+      "--pwd-shadow:0 18px 50px rgba(58,42,24,.18)",
+    ].join(";");
+  }
+  if (theme === "graphite") {
+    return [
+      "--pwd-bg:#1f1f23",
+      "--pwd-border:#4b5563",
+      "--pwd-text:#f4f4f5",
+      "--pwd-muted:#a1a1aa",
+      "--pwd-field-bg:#18181b",
+      "--pwd-button-bg:#27272a",
+      "--pwd-primary:#d4d4d8",
+      "--pwd-primary-text:#18181b",
+      "--pwd-accent-soft:rgba(161,161,170,.16)",
+      "--pwd-shadow:0 18px 50px rgba(0,0,0,.42)",
+    ].join(";");
+  }
   return [
     "--pwd-bg:#ffffff",
     "--pwd-border:#cbd5e1",
@@ -244,6 +364,7 @@ function renderSuggestionPrompt(
   entries: VaultEntry[],
   message = "",
   theme: ExtensionTheme = "fresh",
+  text = CONTENT_TEXT.zh,
 ) {
   removeSuggestionPrompt();
   const rect = anchor.getBoundingClientRect();
@@ -273,7 +394,7 @@ function renderSuggestionPrompt(
 
   const title = document.createElement("div");
   title.style.cssText = "font-weight:800;color:var(--pwd-text)";
-  title.textContent = entries.length ? "可填充账号" : "Password WebDAV";
+  title.textContent = entries.length ? text.fillableAccounts : "Password WebDAV";
 
   const host = document.createElement("div");
   host.style.cssText = "font-size:12px;color:var(--pwd-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis";
@@ -318,7 +439,7 @@ function renderSuggestionPrompt(
 
     const userText = document.createElement("span");
     userText.style.cssText = "font-size:12px;color:var(--pwd-muted);font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis";
-    userText.textContent = entry.username || "未填写账号";
+    userText.textContent = entry.username || text.noAccount;
     firstLine.append(titleText, userText);
 
     const secondLine = document.createElement("div");
@@ -328,7 +449,7 @@ function renderSuggestionPrompt(
     row.append(firstLine, secondLine);
     row.addEventListener("mousedown", (event) => event.preventDefault());
     row.addEventListener("click", () => {
-      fillEntry(entry);
+      fillEntry(entry, text);
       removeSuggestionPrompt();
     });
     list.appendChild(row);
@@ -358,14 +479,15 @@ async function updateAutofillSuggestions(anchor: HTMLInputElement) {
   });
 
   if (requestId !== suggestionRequestId) return;
-  const theme = await loadPromptTheme();
+  const { theme, language } = await loadPromptConfig();
+  const text = CONTENT_TEXT[language];
 
   if (!response?.ok) {
     removeSuggestionPrompt();
     if (response?.reason === "locked") {
       console.info("[Password WebDAV] autofill unavailable until unlocked", { host: location.hostname });
       if (anchor.type === "password" || anchor.value.trim()) {
-        renderSuggestionPrompt(anchor, [], "请先打开扩展并解锁 Password WebDAV，解锁后会自动显示匹配账号。", theme);
+        renderSuggestionPrompt(anchor, [], text.unlockFirst, theme, text);
       }
     }
     return;
@@ -382,7 +504,7 @@ async function updateAutofillSuggestions(anchor: HTMLInputElement) {
     count: entries.length,
     reason: response.reason || "matched",
   });
-  renderSuggestionPrompt(anchor, entries, "", theme);
+  renderSuggestionPrompt(anchor, entries, "", theme, text);
 }
 
 function scheduleAutofillSuggestions(anchor: HTMLInputElement) {
@@ -426,7 +548,8 @@ async function showSavePrompt() {
     type: "password-webdav.get-detected-login-folder-options",
     entry: candidate,
   })) || { folders: [], defaultFolder: "", defaultTitle: "" };
-  const promptTheme = await loadPromptTheme();
+  const { theme: promptTheme, language } = await loadPromptConfig();
+  const text = CONTENT_TEXT[language];
 
   if (folderOptions.alreadySaved) {
     await sendRuntimeMessage({ type: "password-webdav.dismiss-detected-login" });
@@ -460,7 +583,7 @@ async function showSavePrompt() {
   const title = document.createElement("div");
   title.style.fontWeight = "800";
   title.style.marginBottom = "6px";
-  appendText(title, "保存到 Password WebDAV？");
+  appendText(title, text.saveTitle);
 
   const account = document.createElement("div");
   account.style.cssText = "font-size:13px;font-weight:800;color:var(--pwd-text);margin-bottom:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap";
@@ -468,25 +591,25 @@ async function showSavePrompt() {
 
   const titleField = document.createElement("label");
   titleField.style.cssText = "display:flex;flex-direction:column;gap:6px;font-size:12px;color:var(--pwd-muted);margin-bottom:12px";
-  appendText(titleField, "标题");
+  appendText(titleField, text.title);
 
   const titleInput = document.createElement("input");
   titleInput.type = "text";
-  titleInput.placeholder = "例如 GitHub";
+  titleInput.placeholder = text.titlePlaceholder;
   titleInput.value = folderOptions.defaultTitle || candidate.title || location.hostname;
   titleInput.style.cssText = "height:34px;border:1px solid var(--pwd-border);border-radius:6px;padding:0 10px;background:var(--pwd-field-bg);color:var(--pwd-text);font-weight:800";
   titleField.appendChild(titleInput);
 
   const folderField = document.createElement("label");
   folderField.style.cssText = "display:flex;flex-direction:column;gap:6px;font-size:12px;color:var(--pwd-muted);margin-bottom:12px";
-  appendText(folderField, "文件夹");
+  appendText(folderField, text.folder);
 
   const folderSelect = document.createElement("select");
   folderSelect.style.cssText = "height:34px;border:1px solid var(--pwd-border);border-radius:6px;padding:0 10px;background:var(--pwd-field-bg);color:var(--pwd-text);font-weight:800";
 
   const rootOption = document.createElement("option");
   rootOption.value = "";
-  rootOption.textContent = "无文件夹";
+  rootOption.textContent = text.noFolder;
   folderSelect.appendChild(rootOption);
 
   for (const folder of folderOptions.folders ?? []) {
@@ -503,8 +626,8 @@ async function showSavePrompt() {
   actions.style.display = "flex";
   actions.style.gap = "8px";
 
-  const saveButton = createButton("保存", "primary");
-  const dismissButton = createButton("不保存", "secondary");
+  const saveButton = createButton(text.save, "primary");
+  const dismissButton = createButton(text.dismiss, "secondary");
   actions.append(saveButton, dismissButton);
 
   const status = document.createElement("div");
@@ -518,12 +641,12 @@ async function showSavePrompt() {
   });
 
   saveButton.addEventListener("click", () => {
-    status.textContent = "正在保存...";
+    status.textContent = text.saving;
     void sendRuntimeMessage<{ ok?: boolean; message?: string }>({
       type: "password-webdav.save-detected-login",
       entry: { ...candidate, title: titleInput.value.trim() || candidate.title, folder: folderSelect.value },
     }).then((response) => {
-      status.textContent = response?.message || "已处理。";
+      status.textContent = response?.message || text.handled;
       if (response?.ok) {
         setTimeout(removePrompt, 1200);
       }

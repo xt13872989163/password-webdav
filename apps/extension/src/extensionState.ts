@@ -4,15 +4,26 @@ const CONFIG_KEY = "password-webdav.extension.config";
 const VAULT_KEY = "password-webdav.extension.vault";
 const MASTER_PASSWORD_KEY = "password-webdav.extension.master-password";
 
-export type ExtensionTheme = "fresh" | "night" | "contrast";
+export type ExtensionTheme = "fresh" | "night" | "contrast" | "tech" | "forest" | "amber" | "graphite";
+export type ExtensionLanguage = "zh" | "en";
 export type ExtensionConfig = WebDavConfig & {
   theme: ExtensionTheme;
+  language: ExtensionLanguage;
 };
 
 export const EXTENSION_THEMES: Array<{ value: ExtensionTheme; label: string }> = [
   { value: "fresh", label: "清爽" },
   { value: "night", label: "夜间" },
   { value: "contrast", label: "高对比" },
+  { value: "tech", label: "科技" },
+  { value: "forest", label: "森林" },
+  { value: "amber", label: "琥珀" },
+  { value: "graphite", label: "石墨" },
+];
+
+export const EXTENSION_LANGUAGES: Array<{ value: ExtensionLanguage; label: string }> = [
+  { value: "zh", label: "zh" },
+  { value: "en", label: "en" },
 ];
 
 export const DEFAULT_EXTENSION_CONFIG: ExtensionConfig = {
@@ -21,16 +32,33 @@ export const DEFAULT_EXTENSION_CONFIG: ExtensionConfig = {
   password: "",
   vaultPath: normalizeStoredVaultPath("password-vault.json"),
   theme: "fresh",
+  language: "zh",
 };
 
 function normalizeTheme(value: unknown): ExtensionTheme {
-  return value === "night" || value === "contrast" ? value : "fresh";
+  return value === "night" ||
+    value === "contrast" ||
+    value === "tech" ||
+    value === "forest" ||
+    value === "amber" ||
+    value === "graphite"
+    ? value
+    : "fresh";
+}
+
+function normalizeLanguage(value: unknown): ExtensionLanguage {
+  return value === "en" ? "en" : "zh";
 }
 
 export async function loadExtensionConfig(): Promise<ExtensionConfig> {
   const result = await chrome.storage.local.get(CONFIG_KEY);
   const next = { ...DEFAULT_EXTENSION_CONFIG, ...(result[CONFIG_KEY] as Partial<ExtensionConfig> | undefined) };
-  return { ...next, vaultPath: normalizeStoredVaultPath(next.vaultPath), theme: normalizeTheme(next.theme) };
+  return {
+    ...next,
+    vaultPath: normalizeStoredVaultPath(next.vaultPath),
+    theme: normalizeTheme(next.theme),
+    language: normalizeLanguage(next.language),
+  };
 }
 
 export async function saveExtensionConfig(config: ExtensionConfig) {
@@ -39,6 +67,7 @@ export async function saveExtensionConfig(config: ExtensionConfig) {
       ...config,
       vaultPath: normalizeStoredVaultPath(config.vaultPath),
       theme: normalizeTheme(config.theme),
+      language: normalizeLanguage(config.language),
     },
   });
 }

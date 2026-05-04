@@ -50,6 +50,7 @@ import {
   clearSessionMasterPassword,
   clearUnlockedVault,
   DEFAULT_EXTENSION_CONFIG,
+  EXTENSION_LANGUAGES,
   EXTENSION_THEMES,
   getExtensionVaultSubpath,
   loadExtensionConfig,
@@ -60,6 +61,7 @@ import {
   saveUnlockedVault,
   type ExtensionConfig,
 } from "./extensionState";
+import { getMessages, getThemeLabel } from "./i18n";
 import "./popup.css";
 
 const ALL_FOLDERS = "__all__";
@@ -82,14 +84,14 @@ function folderDisplayName(folder: string) {
   return parts[parts.length - 1] || folder;
 }
 
-function folderFilterLabel(folder: string) {
-  if (folder === ALL_FOLDERS) return "全部";
-  if (folder === UNCATEGORIZED_FOLDER) return "未分类";
+function folderFilterLabel(folder: string, text: ReturnType<typeof getMessages>) {
+  if (folder === ALL_FOLDERS) return text.all;
+  if (folder === UNCATEGORIZED_FOLDER) return text.uncategorized;
   return folder;
 }
 
-function folderTreeLabel(folder: string) {
-  if (folder === ALL_FOLDERS || folder === UNCATEGORIZED_FOLDER) return folderFilterLabel(folder);
+function folderTreeLabel(folder: string, text: ReturnType<typeof getMessages>) {
+  if (folder === ALL_FOLDERS || folder === UNCATEGORIZED_FOLDER) return folderFilterLabel(folder, text);
   return folderDisplayName(folder);
 }
 
@@ -160,11 +162,12 @@ function createEntry(
   host = "",
   folder = "",
   defaults: Partial<Pick<VaultEntry, "title" | "username" | "url" | "folder">> = {},
+  fallbackTitle = "新条目",
 ): VaultEntry {
   const now = nowIso();
   return {
     id: uuid(),
-    title: defaults.title || host || "新条目",
+    title: defaults.title || host || fallbackTitle,
     username: defaults.username || "",
     password: generatePassword(),
     url: defaults.url || (host ? `https://${host}` : ""),
@@ -205,21 +208,21 @@ function removeEntry(vault: PlainVault, id: string): PlainVault {
   };
 }
 
-function validateUnlock(settings: WebDavConfig, masterPassword: string) {
-  if (!settings.baseUrl.trim()) return "请填写 WebDAV 根地址。";
-  if (!settings.username.trim()) return "请填写 WebDAV 用户名。";
-  if (!settings.password) return "请填写 WebDAV 密码或应用密码。";
-  if (!getExtensionVaultSubpath(settings).trim()) return "请填写 vault 子路径。";
-  if (masterPassword.length < 8) return "主密码至少需要 8 位。";
+function validateUnlock(settings: WebDavConfig, masterPassword: string, text: ReturnType<typeof getMessages>) {
+  if (!settings.baseUrl.trim()) return text.validation.baseUrl;
+  if (!settings.username.trim()) return text.validation.username;
+  if (!settings.password) return text.validation.password;
+  if (!getExtensionVaultSubpath(settings).trim()) return text.validation.vaultPath;
+  if (masterPassword.length < 8) return text.validation.masterPassword;
   return "";
 }
 
-function deriveNewEntryDefaults(vault: PlainVault | null, host: string, activeFolder: string) {
+function deriveNewEntryDefaults(vault: PlainVault | null, host: string, activeFolder: string, fallbackTitle: string) {
   const folderFromSidebar =
     activeFolder !== ALL_FOLDERS && activeFolder !== UNCATEGORIZED_FOLDER ? activeFolder : "";
   if (!vault || !host) {
     return {
-      title: host || "新条目",
+      title: host || fallbackTitle,
       username: "",
       url: host ? `https://${host}` : "",
       folder: folderFromSidebar,
@@ -233,7 +236,7 @@ function deriveNewEntryDefaults(vault: PlainVault | null, host: string, activeFo
   const latest = matches[0];
 
   return {
-    title: latest?.title || host || "新条目",
+    title: latest?.title || host || fallbackTitle,
     username: usernames.length === 1 ? usernames[0] : "",
     url: latest?.url || `https://${host}`,
     folder: folderFromSidebar || (latest ? entryFolder(latest) : ""),
@@ -270,26 +273,26 @@ function saveDebugLog(lines: string[]) {
   }
 }
 
-function formatUnlockError(error: unknown, settings: WebDavConfig) {
-  const raw = error instanceof Error ? error.message : "解锁失败。";
+function formatUnlockError(error: unknown, settings: WebDavConfig, text: ReturnType<typeof getMessages>) {
+  const raw = error instanceof Error ? error.message : text.errors.unlockFailed;
   const url = resolveVaultUrl(settings);
   if (/timed out/i.test(raw)) {
-    return `连接 WebDAV 超时，请检查网络、WebDAV 地址或服务响应。目标地址：${url}。${raw}`;
+    return text.errors.timeout(url, raw);
   }
   if (/401|403/i.test(raw)) {
-    return `WebDAV 认证失败，请检查用户名和应用密码。目标地址：${url}`;
+    return text.errors.auth(url);
   }
   if (/404|409/i.test(raw)) {
-    return `WebDAV 路径未就绪，正在尝试创建目录时失败。目标地址：${url}`;
+    return text.errors.path(url);
   }
   if (/Failed to load vault from WebDAV/i.test(raw)) {
-    return `无法读取 WebDAV 上的 vault。目标地址：${url}。${raw}`;
+    return text.errors.load(url, raw);
   }
   if (/Failed to save vault to WebDAV/i.test(raw)) {
-    return `无法写入 WebDAV 上的 vault。目标地址：${url}。${raw}`;
+    return text.errors.save(url, raw);
   }
   if (/Failed to create WebDAV directory/i.test(raw)) {
-    return `无法创建 WebDAV 目录。目标地址：${url}。${raw}`;
+    return text.errors.mkdir(url, raw);
   }
   return raw;
 }
@@ -322,7 +325,8 @@ function PopupApp() {
   const [debugLog, setDebugLog] = useState<string[]>(() => loadDebugLog());
 
   function appendDebugLog(message: string) {
-    const line = `[${new Date().toLocaleTimeString("zh-CN", { hour12: false })}] ${message}`;
+    const locale = settings.language === "en" ? "en-US" : "zh-CN";
+    const line = `[${new Date().toLocaleTimeString(locale, { hour12: false })}] ${message}`;
     setDebugLog((current) => {
       const next = [...current, line].slice(-12);
       saveDebugLog(next);
@@ -372,7 +376,8 @@ function PopupApp() {
 
   useEffect(() => {
     document.documentElement.dataset.theme = settings.theme;
-  }, [settings.theme]);
+    document.documentElement.lang = settings.language === "en" ? "en" : "zh-CN";
+  }, [settings.language, settings.theme]);
 
   useEffect(() => {
     setTagDraft("");
@@ -386,6 +391,7 @@ function PopupApp() {
   }, [panelMode, selectedEntry?.id]);
 
   const host = useMemo(() => currentHost(tabUrl), [tabUrl]);
+  const text = useMemo(() => getMessages(settings.language), [settings.language]);
   const vaultSubpath = useMemo(() => getExtensionVaultSubpath(settings), [settings]);
   const selectedEntryIsNew = useMemo(() => isNewDraftEntry(vault, selectedEntry), [selectedEntry, vault]);
   const draftHost = useMemo(() => currentHost(selectedEntry?.url || tabUrl), [selectedEntry, tabUrl]);
@@ -479,7 +485,7 @@ function PopupApp() {
         setSelectedEntry(match);
         setDirty(false);
         if (autoMatchLabel) {
-          setStatus(`已根据${autoMatchLabel}匹配到现有账号，并带出密码与文件夹。`);
+      setStatus(text.status.matchedExisting(autoMatchLabel));
         }
         return;
       }
@@ -503,7 +509,7 @@ function PopupApp() {
       setTagDraft("");
       return;
     }
-    updateSelectedEntry({ ...selectedEntry, tags: nextTags }, "标签");
+    updateSelectedEntry({ ...selectedEntry, tags: nextTags }, text.tag);
     setTagDraft("");
   }
 
@@ -511,7 +517,7 @@ function PopupApp() {
     if (!selectedEntry) return;
     updateSelectedEntry(
       { ...selectedEntry, tags: selectedEntry.tags.filter((current) => current !== tag) },
-      "标签",
+      text.tag,
     );
   }
 
@@ -537,16 +543,16 @@ function PopupApp() {
     const nextTags = uniqueNonEmpty(
       selectedEntry.tags.map((tag, tagIndex) => (tagIndex === index ? nextValue : tag)),
     );
-    updateSelectedEntry({ ...selectedEntry, tags: nextTags }, "标签");
+    updateSelectedEntry({ ...selectedEntry, tags: nextTags }, text.tag);
   }
 
   function applySuggestedEntry(entry: VaultEntry) {
     setSelectedEntry(entry);
     setDirty(false);
-    setStatus("已切换到匹配账号，可以继续编辑后保存同步。");
+    setStatus(text.status.switchedAccount);
   }
 
-  async function persistVault(nextVault: PlainVault, nextStatus = "已同步到 WebDAV。") {
+  async function persistVault(nextVault: PlainVault, nextStatus = text.status.synced) {
     const encrypted = await encryptVault(masterPassword, nextVault);
     await saveVaultFile(settings, encrypted);
     await saveUnlockedVault(nextVault);
@@ -564,9 +570,9 @@ function PopupApp() {
   }
 
   async function handleUnlock() {
-    const error = validateUnlock(settings, masterPassword);
+    const error = validateUnlock(settings, masterPassword, text);
     if (error) {
-      appendDebugLog(`校验失败：${error}`);
+      appendDebugLog(text.status.validationFailed(error));
       console.warn("[Password WebDAV] unlock validation failed", {
         baseUrl: settings.baseUrl,
         username: settings.username,
@@ -578,8 +584,8 @@ function PopupApp() {
     }
 
     setBusy(true);
-    setStatus("正在检查 WebDAV 连接...");
-    appendDebugLog(`开始解锁：${resolveVaultUrl(settings)}`);
+    setStatus(text.status.checkingWebdav);
+    appendDebugLog(text.status.unlockStart(resolveVaultUrl(settings)));
     console.info("[Password WebDAV] unlock start", {
       baseUrl: settings.baseUrl,
       username: settings.username,
@@ -587,31 +593,31 @@ function PopupApp() {
     });
     try {
       await saveExtensionConfig(settings);
-      appendDebugLog("配置已保存，开始读取 WebDAV vault");
+      appendDebugLog(text.status.configSaved);
       const file = await loadVaultFile(settings);
       if (!file) {
         const nextVault = createEmptyVault();
-        setStatus("未找到 vault，正在创建新的加密密码库...");
-        appendDebugLog("未找到远端 vault，开始创建新的加密密码库");
+        setStatus(text.status.creatingVault);
+        appendDebugLog(text.status.creatingVault);
         console.info("[Password WebDAV] vault not found, creating new encrypted vault");
-        await persistVault(nextVault, "WebDAV 上没有找到 vault，已创建新的加密密码库。");
+        await persistVault(nextVault, text.status.createdVault);
         await rememberMasterPasswordForBackground();
         setSelectedEntry(null);
-        appendDebugLog("新 vault 创建成功，当前会话已解锁");
+        appendDebugLog(text.status.createdVaultLog);
         console.info("[Password WebDAV] vault created and unlocked");
         return;
       }
 
-      setStatus("正在解密并载入密码库...");
-      appendDebugLog("远端 vault 已读取，开始解密");
+      setStatus(text.status.decryptingVault);
+      appendDebugLog(text.status.decryptingVaultLog);
       const plain = await decryptVault(masterPassword, file);
       await saveUnlockedVault(plain);
       await rememberMasterPasswordForBackground();
       setVault(plain);
       setSelectedEntry(plain.entries[0] ?? null);
       setDirty(false);
-      setStatus(`已解锁 ${plain.entries.length} 条密码。`);
-      appendDebugLog(`解锁成功：${plain.entries.length} 条密码`);
+      setStatus(text.status.unlocked(plain.entries.length));
+      appendDebugLog(text.status.unlockSuccess(plain.entries.length));
       console.info("[Password WebDAV] unlock success", { entryCount: plain.entries.length });
     } catch (error) {
       console.error("[Password WebDAV] unlock failed", {
@@ -620,8 +626,8 @@ function PopupApp() {
         username: settings.username,
         vaultPath: settings.vaultPath,
       });
-      const formatted = formatUnlockError(error, settings);
-      appendDebugLog(`解锁失败：${formatted}`);
+      const formatted = formatUnlockError(error, settings, text);
+      appendDebugLog(text.status.unlockFailed(formatted));
       setStatus(formatted);
     } finally {
       setBusy(false);
@@ -630,25 +636,25 @@ function PopupApp() {
 
   async function handleRefresh() {
     if (!masterPassword) {
-      setStatus("刷新前需要会话主密码，请先重新解锁。");
+      setStatus(text.status.refreshNeedsPassword);
       return;
     }
 
     setBusy(true);
-    setStatus("正在刷新...");
+    setStatus(text.status.refreshing);
     try {
       const file = await loadVaultFile(settings);
       if (!file) {
-        throw new Error("WebDAV 上没有找到 vault 文件。");
+        throw new Error(text.status.noVaultFile);
       }
       const plain = await decryptVault(masterPassword, file);
       await saveUnlockedVault(plain);
       setVault(plain);
       setSelectedEntry(plain.entries.find((entry) => entry.id === selectedEntry?.id) ?? plain.entries[0] ?? null);
       setDirty(false);
-      setStatus("已从 WebDAV 刷新。");
+      setStatus(text.status.refreshed);
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "刷新失败。");
+      setStatus(error instanceof Error ? error.message : text.status.refreshFailed);
     } finally {
       setBusy(false);
     }
@@ -657,13 +663,13 @@ function PopupApp() {
   async function handleSaveSelected() {
     if (!vault || !selectedEntry) return;
     setBusy(true);
-    setStatus("正在加密并同步...");
+    setStatus(text.status.syncing);
     try {
       const nextVault = upsertEntry(vault, selectedEntry);
       await persistVault(nextVault);
       setSelectedEntry(nextVault.entries.find((entry) => entry.id === selectedEntry.id) ?? selectedEntry);
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "保存失败。");
+      setStatus(error instanceof Error ? error.message : text.status.saveFailed);
       setDirty(true);
     } finally {
       setBusy(false);
@@ -673,10 +679,10 @@ function PopupApp() {
   async function handleDelete(entryId: string) {
     if (!vault) return;
     setBusy(true);
-    setStatus("正在删除并同步...");
+    setStatus(text.status.deleting);
     try {
       const nextVault = removeEntry(vault, entryId);
-      await persistVault(nextVault, "已删除并同步到 WebDAV。");
+      await persistVault(nextVault, text.status.deleted);
       setSelectedEntry((current) => {
         if (!current || current.id === entryId) {
           return nextVault.entries[0] ?? null;
@@ -687,7 +693,7 @@ function PopupApp() {
         setRevealedEntryId(null);
       }
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "删除失败。");
+      setStatus(error instanceof Error ? error.message : text.status.deleteFailed);
     } finally {
       setBusy(false);
     }
@@ -699,17 +705,17 @@ function PopupApp() {
     if (!normalized) return;
 
     setBusy(true);
-    setStatus(`正在删除文件夹 ${normalized}...`);
+    setStatus(text.status.deletingFolder(normalized));
     try {
       const nextVault = removeVaultFolder(vault, normalized);
-      await persistVault(nextVault, `已删除文件夹 ${normalized}，其中条目已移动到未分类。`);
+      await persistVault(nextVault, text.status.deletedFolder(normalized));
       setActiveFolder(UNCATEGORIZED_FOLDER);
       setSelectedEntry((current) => {
         if (!current) return nextVault.entries[0] ?? null;
         return nextVault.entries.find((entry) => entry.id === current.id) ?? nextVault.entries[0] ?? null;
       });
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "删除文件夹失败。");
+      setStatus(error instanceof Error ? error.message : text.status.deleteFolderFailed);
     } finally {
       setBusy(false);
     }
@@ -719,44 +725,44 @@ function PopupApp() {
     if (!vault) return;
     const folder = normalizeFolderPath(newFolderPath);
     if (!folder) {
-      setStatus("请填写文件夹路径，例如 工作/GitHub。");
+      setStatus(text.status.folderRequired);
       return;
     }
 
     setBusy(true);
-    setStatus("正在创建文件夹...");
+    setStatus(text.status.creatingFolder);
     try {
       const nextVault = {
         ...vault,
         updatedAt: nowIso(),
         folders: mergeVaultFolders(vault, [folder]),
       };
-      await persistVault(nextVault, `已创建文件夹：${folder}`);
+      await persistVault(nextVault, text.status.createdFolder(folder));
       setActiveFolder(folder);
       setNewFolderPath("");
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "创建文件夹失败。");
+      setStatus(error instanceof Error ? error.message : text.status.createFolderFailed);
     } finally {
       setBusy(false);
     }
   }
 
   function handleAdd() {
-    const defaults = deriveNewEntryDefaults(vault, host, activeFolder);
-    const entry = createEntry(host, defaults.folder, defaults);
+    const defaults = deriveNewEntryDefaults(vault, host, activeFolder, text.newEntry);
+    const entry = createEntry(host, defaults.folder, defaults, text.newEntry);
     setSelectedEntry(entry);
     setDirty(true);
     setPanelMode("entry");
-    setStatus("已新建条目，请在详情里补全并保存。");
+    setStatus(text.status.newEntryCreated);
   }
 
   async function copyToClipboard(value: string, label: string) {
     if (!value) {
-      setStatus(`${label}为空。`);
+      setStatus(text.status.emptyValue(label));
       return;
     }
     await navigator.clipboard.writeText(value);
-    setStatus(`已复制${label}。`);
+    setStatus(text.status.copied(label));
   }
 
   async function lockVault() {
@@ -769,12 +775,12 @@ function PopupApp() {
     setDirty(false);
     setPanelMode("main");
     setRevealedEntryId(null);
-    setStatus("已锁定。");
+    setStatus(text.status.locked);
   }
 
   async function handleSaveSettings() {
     await saveExtensionConfig(settings);
-    setStatus("已保存设置。");
+    setStatus(text.status.settingsSaved);
   }
 
   function beginRenameFolder(folder: string) {
@@ -832,10 +838,10 @@ function PopupApp() {
     try {
       const nextEntry = { ...entry, title: nextTitle };
       const nextVault = upsertEntry(vault, nextEntry);
-      await persistVault(nextVault, "已更新标题。");
+      await persistVault(nextVault, text.status.titleUpdated);
       setSelectedEntry(nextVault.entries.find((item) => item.id === entry.id) ?? nextEntry);
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "更新标题失败。");
+      setStatus(error instanceof Error ? error.message : text.status.updateTitleFailed);
     } finally {
       setBusy(false);
     }
@@ -845,7 +851,7 @@ function PopupApp() {
     if (!vault || !renamingFolder) return;
     const nextName = normalizeFolderPath(renamingValue);
     if (!nextName) {
-      setStatus("文件夹名称不能为空。");
+      setStatus(text.status.folderNameRequired);
       return;
     }
     const source = renamingFolder;
@@ -854,7 +860,7 @@ function PopupApp() {
       const nextVault = renameVaultFolder(vault, source, nextName);
       const parent = normalizeFolderPath(source).split("/").slice(0, -1).join("/");
       const nextPath = normalizeFolderPath(parent ? `${parent}/${nextName}` : nextName);
-      await persistVault(nextVault, `已重命名文件夹：${folderDisplayName(source)} → ${folderDisplayName(nextPath)}`);
+      await persistVault(nextVault, text.status.renamedFolder(folderDisplayName(source), folderDisplayName(nextPath)));
       setActiveFolder((current) => {
         if (current === ALL_FOLDERS || current === UNCATEGORIZED_FOLDER) return current;
         return rebasePath(current, source, nextPath);
@@ -866,7 +872,7 @@ function PopupApp() {
       setRenamingFolder(null);
       setRenamingValue("");
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "重命名文件夹失败。");
+      setStatus(error instanceof Error ? error.message : text.status.renameFolderFailed);
     } finally {
       setBusy(false);
     }
@@ -885,10 +891,10 @@ function PopupApp() {
         await persistVault(
           nextVault,
           target === ALL_FOLDERS
-            ? "已将账号移动到根层。"
+            ? text.status.movedEntryRoot
             : nextFolder
-              ? `已将账号移动到 ${nextFolder}。`
-              : "已将账号移动到未分类。",
+              ? text.status.movedEntryFolder(nextFolder)
+              : text.status.movedEntryUncategorized,
         );
         setSelectedEntry(nextVault.entries.find((entry) => entry.id === dragItem.entryId) ?? selectedEntry);
         return;
@@ -906,7 +912,7 @@ function PopupApp() {
             ? `${nextParent}/${folderDisplayName(dragItem.folder)}`
             : folderDisplayName(dragItem.folder),
         );
-        await persistVault(nextVault, `已移动文件夹到 ${nextParent || "根目录"}。`);
+        await persistVault(nextVault, text.status.movedFolder(nextParent));
         setActiveFolder((current) => {
           if (current === ALL_FOLDERS || current === UNCATEGORIZED_FOLDER) return current;
           return rebasePath(current, dragItem.folder, nextPath);
@@ -917,7 +923,7 @@ function PopupApp() {
         });
       }
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "拖拽移动失败。");
+      setStatus(error instanceof Error ? error.message : text.status.dragFailed);
     } finally {
       setBusy(false);
     }
@@ -952,14 +958,14 @@ function PopupApp() {
   function renderEntryRow(entry: VaultEntry, showFolderChip: boolean) {
     const revealed = revealedEntryId === entry.id;
     const selected = selectedEntry?.id === entry.id;
-    const accountText = entry.username || entry.url || "未填写账号";
+    const accountText = entry.username || entry.url || text.noAccount;
     const accountCopyValue = entry.username || entry.url;
-    const accountCopyLabel = entry.username ? "账号" : "网址";
+    const accountCopyLabel = entry.username ? text.account : text.url;
 
     return (
       <article
         key={entry.id}
-        className={`entry-card${selected ? " selected" : ""}`}
+        className={`entry-card${selected ? " selected" : ""}${dragItem?.type === "entry" && dragItem.entryId === entry.id ? " dragging" : ""}`}
         draggable
         onDragStart={() => setDragItem({ type: "entry", entryId: entry.id })}
         onDragEnd={() => {
@@ -972,7 +978,7 @@ function PopupApp() {
         }}
       >
         <div className="entry-top">
-          <div className="drag-handle" title="拖拽移动">
+          <div className="drag-handle" title={text.dragMove}>
             <GripVertical size={14} />
           </div>
           <div className="entry-info">
@@ -1000,7 +1006,7 @@ function PopupApp() {
                 <button
                   type="button"
                   className="entry-title-button"
-                  title="双击修改标题"
+                  title={text.renameTitle}
                   onClick={(event) => {
                     event.stopPropagation();
                     setSelectedEntry(entry);
@@ -1010,16 +1016,16 @@ function PopupApp() {
                     beginEditEntryTitle(entry);
                   }}
                 >
-                  {entry.title || "未命名"}
+                  {entry.title || text.unnamed}
                 </button>
               )}
-              <span className="entry-host">{currentHost(entry.url) || "无网址"}</span>
+              <span className="entry-host">{currentHost(entry.url) || text.noUrl}</span>
             </div>
             <div className="entry-credentials">
               <button
                 type="button"
                 className="entry-copy-line entry-username"
-                title={`点击复制${accountCopyLabel}`}
+                title={entry.username ? text.copyAccount : text.copyUrl}
                 onClick={() => {
                   void copyToClipboard(accountCopyValue || "", accountCopyLabel);
                 }}
@@ -1031,32 +1037,24 @@ function PopupApp() {
                 <button
                   type="button"
                   className={`secret-value${revealed ? " revealed" : ""}`}
-                  title="点击复制密码"
+                  title={text.copyPassword}
                   onClick={() => {
-                    void copyToClipboard(entry.password, "密码");
+                    void copyToClipboard(entry.password, text.password);
                   }}
                 >
                   {revealed ? entry.password : "••••••••••••"}
                 </button>
                 <button
                   type="button"
-                  className="text-button"
+                  className="icon-button small secret-toggle"
+                  title={revealed ? text.hidePassword : text.showPassword}
+                  aria-label={revealed ? text.hidePassword : text.showPassword}
                   onClick={(event) => {
                     event.stopPropagation();
                     setRevealedEntryId((current) => (current === entry.id ? null : entry.id));
                   }}
                 >
-                  {revealed ? (
-                    <>
-                      <EyeOff size={14} />
-                      隐藏
-                    </>
-                  ) : (
-                    <>
-                      <Eye size={14} />
-                      显示
-                    </>
-                  )}
+                  {revealed ? <EyeOff size={14} /> : <Eye size={14} />}
                 </button>
               </div>
             </div>
@@ -1065,7 +1063,7 @@ function PopupApp() {
             <button
               type="button"
               className="icon-button small danger row-delete"
-              title="删除"
+              title={text.delete}
               onClick={(event) => {
                 event.stopPropagation();
                 void handleDelete(entry.id);
@@ -1090,14 +1088,14 @@ function PopupApp() {
       (folder === ALL_FOLDERS ? 0 : folder === UNCATEGORIZED_FOLDER ? 1 : Math.max(1, folder.split("/").length));
     const normalized = isSpecial ? folder : normalizeFolderPath(folder);
     const count = entryCountForFolder(folder);
-    const treeLabel = folderTreeLabel(folder);
+    const treeLabel = folderTreeLabel(folder, text);
     const canCollapse = !isSpecial && folderHasChildren(normalized);
     const collapsed = canCollapse && collapsedFolders.has(normalized);
 
     return (
       <div
         key={folder}
-        className={`folder-row${depth > 0 ? " tree-child" : " tree-root"}${selected ? " selected" : ""}${isDropTarget ? " drag-over" : ""}`}
+        className={`folder-row${depth > 0 ? " tree-child" : " tree-root"}${selected ? " selected" : ""}${isDropTarget ? " drag-over" : ""}${dragItem && !canDrop ? " drop-disabled" : ""}${dragItem?.type === "folder" && dragItem.folder === normalized ? " dragging" : ""}`}
         style={{
           paddingLeft: `${8 + depth * 16}px`,
           "--tree-line-x": `${13 + (depth - 1) * 16}px`,
@@ -1142,7 +1140,7 @@ function PopupApp() {
           <span
             className={`folder-toggle${canCollapse ? "" : " placeholder"}`}
             aria-hidden={!canCollapse}
-            title={collapsed ? "展开" : "收起"}
+            title={collapsed ? text.expand : text.collapse}
             onClick={(event) => {
               event.stopPropagation();
               toggleFolderCollapse(normalized);
@@ -1179,7 +1177,7 @@ function PopupApp() {
           <button
             type="button"
             className="icon-button small row-delete"
-            title="删除文件夹"
+            title={text.deleteFolder}
             onClick={() => void handleDeleteFolder(normalized)}
           >
             <Trash2 size={14} />
@@ -1197,13 +1195,13 @@ function PopupApp() {
             <ShieldCheck size={18} />
             <div>
               <strong>Password WebDAV</strong>
-              <span>连接 WebDAV 并解锁当前会话</span>
+              <span>{text.lockedSubtitle}</span>
             </div>
           </div>
           <button
             type="button"
             className="icon-button"
-            title="打开设置页"
+            title={text.openSettingsPage}
             onClick={() => chrome.runtime.openOptionsPage()}
           >
             <Settings size={16} />
@@ -1212,67 +1210,77 @@ function PopupApp() {
 
         <section className="panel-card unlock-panel">
           <label className="field">
-            <span>WebDAV 根地址</span>
+            <span>{text.webdavBaseUrl}</span>
             <input value={settings.baseUrl} onChange={(event) => setSettings({ ...settings, baseUrl: event.target.value })} />
           </label>
           <label className="field">
-            <span>用户名</span>
+            <span>{text.username}</span>
             <input value={settings.username} onChange={(event) => setSettings({ ...settings, username: event.target.value })} />
           </label>
           <label className="field">
-            <span>密码或应用密码</span>
+            <span>{text.webdavPassword}</span>
             <input type="password" value={settings.password} onChange={(event) => setSettings({ ...settings, password: event.target.value })} />
           </label>
           <label className="field">
-            <span>Vault 子路径</span>
+            <span>{text.vaultSubpath}</span>
             <div className="path-input">
               <span className="path-prefix">{VAULT_ROOT_FOLDER}/</span>
               <input value={vaultSubpath} onChange={(event) => updateVaultSubpath(event.target.value)} />
             </div>
           </label>
           <p className="field-help">
-            根目录固定为 <code>PasswordWebDAV/</code>，这里只填写里面的子路径，例如
+            {text.fixedRootHelp} <code>PasswordWebDAV/</code>，{text.fixedRootHelpTail}
             <code>work/password-vault.json</code>。
           </p>
           <label className="field">
-            <span>主密码</span>
+            <span>{text.masterPassword}</span>
             <input type="password" value={masterPassword} onChange={(event) => setMasterPassword(event.target.value)} />
           </label>
           <label className="field">
-            <span>主题</span>
+            <span>{text.theme}</span>
             <select value={settings.theme} onChange={(event) => setSettings({ ...settings, theme: event.target.value as ExtensionConfig["theme"] })}>
               {EXTENSION_THEMES.map((theme) => (
                 <option key={theme.value} value={theme.value}>
-                  {theme.label}
+                  {getThemeLabel(theme.value, settings.language)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="field">
+            <span>{text.language}</span>
+            <select value={settings.language} onChange={(event) => setSettings({ ...settings, language: event.target.value as ExtensionConfig["language"] })}>
+              {EXTENSION_LANGUAGES.map((language) => (
+                <option key={language.value} value={language.value}>
+                  {language.label}
                 </option>
               ))}
             </select>
           </label>
           <div className="unlock-footer">
             <div className="unlock-status" aria-live="polite">
-              {status || (busy ? "正在处理，请稍等..." : "填写完连接信息后，点击按钮开始解锁或创建。")}
+              {status || (busy ? text.processingWait : text.unlockHint)}
             </div>
             <button type="button" className="primary-button" disabled={busy} onClick={handleUnlock}>
               <Lock size={16} />
-              {busy ? "处理中..." : "解锁或创建"}
+              {busy ? text.processing : text.unlockOrCreate}
             </button>
           </div>
         </section>
 
         <p className="status">
           {status
-            ? `调试提示：如需更详细信息，请在扩展弹窗的开发者工具里查看 Console。`
-            : "如果卡住了，通常是 WebDAV 地址、用户名、应用密码或网络超时导致的。"}
+            ? text.debugHint
+            : text.stuckHint}
         </p>
 
         <section className="panel-card debug-panel">
           <div className="panel-header">
             <div>
-              <strong>调试日志</strong>
-              <span>这里会打印解锁过程，便于定位卡在哪一步</span>
+              <strong>{text.debugLog}</strong>
+              <span>{text.debugLogHint}</span>
             </div>
             <button type="button" className="text-button" onClick={clearDebugLog}>
-              清空
+              {text.clear}
             </button>
           </div>
           <div className="debug-log">
@@ -1281,7 +1289,7 @@ function PopupApp() {
                 <p key={`${line}-${index}`}>{line}</p>
               ))
             ) : (
-              <p>当前还没有解锁日志，点击“解锁或创建”后这里会出现详细过程。</p>
+              <p>{text.emptyDebugLog}</p>
             )}
           </div>
         </section>
@@ -1295,14 +1303,14 @@ function PopupApp() {
         <aside className="panel-card folder-panel">
           <div className="panel-header">
             <div>
-              <strong>文件夹</strong>
-              <span>双击改名，支持拖拽</span>
+              <strong>{text.folderHeader}</strong>
+              <span>{text.folderHint}</span>
             </div>
           </div>
 
           <div className="folder-create">
             <input
-              placeholder="例如 工作/GitHub"
+              placeholder={text.newFolderPlaceholder}
               value={newFolderPath}
               onChange={(event) => setNewFolderPath(event.target.value)}
               onKeyDown={(event) => {
@@ -1311,7 +1319,7 @@ function PopupApp() {
                 }
               }}
             />
-            <button type="button" className="icon-button" title="新建文件夹" onClick={() => void handleCreateFolder()}>
+            <button type="button" className="icon-button" title={text.newFolder} onClick={() => void handleCreateFolder()}>
               <FolderPlus size={15} />
             </button>
           </div>
@@ -1326,13 +1334,13 @@ function PopupApp() {
         <section className="panel-card list-panel">
           <div className="panel-header">
             <div>
-              <strong>{folderFilterLabel(activeFolder)}</strong>
-              <span>{entries.length} 条账号</span>
+              <strong>{folderFilterLabel(activeFolder, text)}</strong>
+              <span>{text.entryCount(entries.length)}</span>
             </div>
           </div>
 
           <div className="entry-list">
-            {entries.length > 0 ? entries.map((entry) => renderEntryRow(entry, false)) : <p className="empty-hint">当前范围内没有匹配账号。</p>}
+            {entries.length > 0 ? entries.map((entry) => renderEntryRow(entry, false)) : <p className="empty-hint">{text.noEntriesInScope}</p>}
           </div>
         </section>
       </div>
@@ -1341,16 +1349,16 @@ function PopupApp() {
 
   function renderAllView() {
     return (
-      <section className="panel-card list-panel">
+      <section className="panel-card list-panel compact-list-panel">
         <div className="panel-header">
           <div>
-            <strong>全部账号</strong>
-            <span>{allEntries.length} 条账号</span>
+            <strong>{text.allAccounts}</strong>
+            <span>{text.entryCount(allEntries.length)}</span>
           </div>
         </div>
 
         <div className="entry-list">
-          {allEntries.length > 0 ? allEntries.map((entry) => renderEntryRow(entry, true)) : <p className="empty-hint">没有找到匹配账号。</p>}
+          {allEntries.length > 0 ? allEntries.map((entry) => renderEntryRow(entry, true)) : <p className="empty-hint">{text.noEntriesFound}</p>}
         </div>
       </section>
     );
@@ -1362,25 +1370,25 @@ function PopupApp() {
         <section className="panel-card settings-panel">
           <div className="panel-header">
             <div>
-              <strong>Vault 设置</strong>
-              <span>根目录固定为 PasswordWebDAV/</span>
+              <strong>{text.vaultSettings}</strong>
+              <span>{text.vaultRootFixed}</span>
             </div>
           </div>
 
           <label className="field">
-            <span>WebDAV 根地址</span>
+            <span>{text.webdavBaseUrl}</span>
             <input value={settings.baseUrl} onChange={(event) => setSettings({ ...settings, baseUrl: event.target.value })} />
           </label>
           <label className="field">
-            <span>用户名</span>
+            <span>{text.username}</span>
             <input value={settings.username} onChange={(event) => setSettings({ ...settings, username: event.target.value })} />
           </label>
           <label className="field">
-            <span>密码或应用密码</span>
+            <span>{text.webdavPassword}</span>
             <input type="password" value={settings.password} onChange={(event) => setSettings({ ...settings, password: event.target.value })} />
           </label>
           <label className="field">
-            <span>Vault 子路径</span>
+            <span>{text.vaultSubpath}</span>
             <div className="path-input">
               <span className="path-prefix">{VAULT_ROOT_FOLDER}/</span>
               <input value={vaultSubpath} onChange={(event) => updateVaultSubpath(event.target.value)} />
@@ -1389,11 +1397,11 @@ function PopupApp() {
           <section className="settings-subsection">
             <div className="panel-header compact">
               <div>
-                <strong>界面设置</strong>
-                <span>只保存在当前浏览器，不写入 WebDAV vault</span>
+                <strong>{text.uiSettings}</strong>
+                <span>{text.uiSettingsHint}</span>
               </div>
             </div>
-            <div className="theme-picker" role="radiogroup" aria-label="主题">
+            <div className="theme-picker" role="radiogroup" aria-label={text.theme}>
               {EXTENSION_THEMES.map((theme) => (
                 <button
                   key={theme.value}
@@ -1402,27 +1410,37 @@ function PopupApp() {
                   onClick={() => setSettings({ ...settings, theme: theme.value })}
                 >
                   <span className={`theme-swatch theme-swatch-${theme.value}`} />
-                  {theme.label}
+                  {getThemeLabel(theme.value, settings.language)}
                 </button>
               ))}
             </div>
+            <label className="field compact-field">
+              <span>{text.language}</span>
+              <select value={settings.language} onChange={(event) => setSettings({ ...settings, language: event.target.value as ExtensionConfig["language"] })}>
+                {EXTENSION_LANGUAGES.map((language) => (
+                  <option key={language.value} value={language.value}>
+                    {language.label}
+                  </option>
+                ))}
+              </select>
+            </label>
           </section>
           <div className="action-row">
             <button type="button" className="primary-button compact" onClick={() => void handleSaveSettings()}>
               <Save size={15} />
-              保存设置
+              {text.saveSettings}
             </button>
             <button type="button" className="ghost-button compact" disabled={busy} onClick={() => void handleRefresh()}>
               <RefreshCw size={15} />
-              刷新
+              {text.refresh}
             </button>
             <button type="button" className="ghost-button compact" onClick={() => void lockVault()}>
               <Lock size={15} />
-              锁定
+              {text.lock}
             </button>
             <button type="button" className="ghost-button compact" onClick={() => chrome.runtime.openOptionsPage()}>
               <Settings size={15} />
-              系统设置页
+              {text.openOptionsPage}
             </button>
           </div>
         </section>
@@ -1436,35 +1454,35 @@ function PopupApp() {
         <section className="panel-card settings-panel">
           <div className="panel-header">
             <div>
-              <strong>{selectedEntry ? "密码详情" : "密码详情"}</strong>
-              <span>{selectedEntry ? selectedEntry.title || selectedEntry.username || "当前密码" : "先在主界面选择一个条目"}</span>
+              <strong>{text.details}</strong>
+              <span>{selectedEntry ? selectedEntry.title || selectedEntry.username || text.currentPassword : text.selectEntryHint}</span>
             </div>
           </div>
 
           {selectedEntry ? (
             <>
               <label className="field">
-                <span>标题</span>
+                <span>{text.title}</span>
                 <input
                   list={TITLE_SUGGESTIONS_ID}
                   value={selectedEntry.title}
-                  onChange={(event) => updateSelectedEntry({ ...selectedEntry, title: event.target.value }, "标题")}
+                  onChange={(event) => updateSelectedEntry({ ...selectedEntry, title: event.target.value }, text.title)}
                 />
               </label>
               <label className="field">
-                <span>网址</span>
+                <span>{text.url}</span>
                 <input
                   list={URL_SUGGESTIONS_ID}
                   value={selectedEntry.url}
-                  onChange={(event) => updateSelectedEntry({ ...selectedEntry, url: event.target.value }, "网址")}
+                  onChange={(event) => updateSelectedEntry({ ...selectedEntry, url: event.target.value }, text.url)}
                 />
               </label>
               <label className="field">
-                <span>用户名</span>
+                <span>{text.username}</span>
                 <input
                   list={USERNAME_SUGGESTIONS_ID}
                   value={selectedEntry.username}
-                  onChange={(event) => updateSelectedEntry({ ...selectedEntry, username: event.target.value }, "用户名")}
+                  onChange={(event) => updateSelectedEntry({ ...selectedEntry, username: event.target.value }, text.username)}
                 />
               </label>
               {selectedEntryIsNew && quickUsernameSuggestions.length > 0 && (
@@ -1482,7 +1500,7 @@ function PopupApp() {
                 </div>
               )}
               <label className="field">
-                <span>密码</span>
+                <span>{text.password}</span>
                 <div className="inline-input">
                   <input
                     type={revealedEntryId === selectedEntry.id ? "text" : "password"}
@@ -1495,7 +1513,7 @@ function PopupApp() {
                   <button
                     type="button"
                     className="icon-button"
-                    title={revealedEntryId === selectedEntry.id ? "隐藏密码" : "显示密码"}
+                    title={revealedEntryId === selectedEntry.id ? text.hidePassword : text.showPassword}
                     onClick={() => setRevealedEntryId((current) => (current === selectedEntry.id ? null : selectedEntry.id))}
                   >
                     {revealedEntryId === selectedEntry.id ? <EyeOff size={15} /> : <Eye size={15} />}
@@ -1503,7 +1521,7 @@ function PopupApp() {
                   <button
                     type="button"
                     className="icon-button"
-                    title="生成密码"
+                    title={text.generatePassword}
                     onClick={() => {
                       setSelectedEntry({ ...selectedEntry, password: generatePassword() });
                       setDirty(true);
@@ -1514,16 +1532,16 @@ function PopupApp() {
                 </div>
               </label>
               <label className="field">
-                <span>文件夹</span>
+                <span>{text.folder}</span>
                 <input
                   list={FOLDER_SUGGESTIONS_ID}
-                  placeholder="例如 工作/GitHub，留空为未分类"
+                  placeholder={text.passwordFolderPlaceholder}
                   value={selectedEntry.folder || ""}
                   onChange={(event) => updateSelectedEntry({ ...selectedEntry, folder: event.target.value })}
                 />
               </label>
               <label className="field">
-                <span>标签</span>
+                <span>{text.tags}</span>
                 <div className="tag-editor">
                   {selectedEntry.tags.map((tag, index) =>
                     editingTagIndex === index ? (
@@ -1546,7 +1564,7 @@ function PopupApp() {
                         <button
                           type="button"
                           className="tag-pill-label"
-                          title="编辑标签"
+                          title={text.editTag}
                           onClick={() => beginEditSelectedEntryTag(index, tag)}
                         >
                           {tag}
@@ -1554,7 +1572,7 @@ function PopupApp() {
                         <button
                           type="button"
                           className="tag-pill-remove"
-                          title="删除标签"
+                          title={text.deleteTag}
                           onClick={() => removeSelectedEntryTag(tag)}
                         >
                           <X size={12} />
@@ -1564,7 +1582,7 @@ function PopupApp() {
                   )}
                   <input
                     className="tag-input"
-                    placeholder={selectedEntry.tags.length > 0 ? "添加标签" : "例如 work，回车添加"}
+                    placeholder={selectedEntry.tags.length > 0 ? text.addTagPlaceholder : text.tagPlaceholder}
                     value={tagDraft}
                     onChange={(event) => setTagDraft(event.target.value)}
                     onKeyDown={(event) => {
@@ -1581,9 +1599,9 @@ function PopupApp() {
                 </div>
               </label>
               <label className="field">
-                <span>备注</span>
+                <span>{text.notes}</span>
                 <textarea
-                  placeholder="例如恢复码、登录说明、二次验证提示"
+                  placeholder={text.notesPlaceholder}
                   value={selectedEntry.notes}
                   onChange={(event) => updateSelectedEntry({ ...selectedEntry, notes: event.target.value })}
                 />
@@ -1592,16 +1610,16 @@ function PopupApp() {
               <div className="action-row">
                 <button type="button" className="primary-button compact" disabled={busy} onClick={() => void handleSaveSelected()}>
                   <Save size={15} />
-                  {busy ? "保存中..." : "保存同步"}
+                  {busy ? text.saving : text.saveSync}
                 </button>
                 <button type="button" className="ghost-button compact danger" disabled={busy} onClick={() => void handleDelete(selectedEntry.id)}>
                   <Trash2 size={15} />
-                  删除
+                  {text.delete}
                 </button>
               </div>
             </>
           ) : (
-            <p className="empty-hint">先在主界面选中一个账号，再到这里看详细字段。</p>
+            <p className="empty-hint">{text.selectEntryHint}</p>
           )}
         </section>
       </div>
@@ -1617,7 +1635,7 @@ function PopupApp() {
       <header className="popup-header manager-header">
         <div className="header-title">
           {panelMode !== "main" ? (
-            <button type="button" className="icon-button" title="返回" onClick={() => setPanelMode("main")}>
+            <button type="button" className="icon-button" title={text.back} onClick={() => setPanelMode("main")}>
               <ArrowLeft size={16} />
             </button>
           ) : (
@@ -1627,10 +1645,10 @@ function PopupApp() {
             <strong>Password WebDAV</strong>
             <span>
               {panelMode === "settings"
-                ? "Vault 设置"
+                ? text.vaultSettings
                 : panelMode === "entry"
-                  ? "密码详情"
-                  : host || "当前页面无可识别域名"}
+                  ? text.details
+                  : host || text.currentPageNoHost}
             </span>
           </div>
         </div>
@@ -1643,21 +1661,21 @@ function PopupApp() {
                 className={browseMode === "folders" ? "active" : ""}
                 onClick={() => setBrowseMode("folders")}
               >
-                文件夹
+                {text.folders}
               </button>
               <button
                 type="button"
                 className={browseMode === "all" ? "active" : ""}
                 onClick={() => setBrowseMode("all")}
               >
-                全部
+                {text.allTab}
               </button>
             </div>
           )}
           <button
             type="button"
             className="icon-button"
-            title="设置"
+            title={text.settings}
             onClick={() => setPanelMode((value) => (value === "settings" ? "main" : "settings"))}
           >
             <Settings size={16} />
@@ -1670,18 +1688,18 @@ function PopupApp() {
           <div className="toolbar-row">
             <input
               className="search-input"
-              placeholder="搜索标题、网址、账号、标签"
+              placeholder={text.searchPlaceholder}
               value={query}
               onChange={(event) => setQuery(event.target.value)}
             />
             <div className="toolbar-actions">
-              <button type="button" className="icon-button" title="新建账号" onClick={handleAdd}>
+              <button type="button" className="icon-button" title={text.createEntry} onClick={handleAdd}>
                 <Plus size={16} />
               </button>
-              <button type="button" className="icon-button" title="刷新" disabled={busy} onClick={() => void handleRefresh()}>
+              <button type="button" className="icon-button" title={text.refresh} disabled={busy} onClick={() => void handleRefresh()}>
                 <RefreshCw size={16} />
               </button>
-              <button type="button" className="icon-button" title="锁定" onClick={() => void lockVault()}>
+              <button type="button" className="icon-button" title={text.lock} onClick={() => void lockVault()}>
                 <Lock size={16} />
               </button>
             </div>
@@ -1716,7 +1734,7 @@ function PopupApp() {
         ))}
       </datalist>
 
-      {status && <p className="status">{status}{dirty ? " · 有未保存修改" : ""}</p>}
+      {status && <p className="status">{status}{dirty ? ` · ${text.dirtySuffix}` : ""}</p>}
     </main>
   );
 }
