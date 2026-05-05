@@ -2,6 +2,7 @@
 
 ## 页面目录
 
+- [Release Notes](Release-Notes.md)：1.0.0 功能说明和 1.0.1 升级内容。
 - [Getting Started](Getting-Started.md)：安装、构建、加载 Chrome 插件。
 - [WebDAV Setup](WebDAV-Setup.md)：WebDAV 地址、账号、应用密码、目录创建。
 - [Architecture](Architecture.md)：插件、core、WebDAV 分别负责什么，以及加解密流程。

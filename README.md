@@ -1,5 +1,9 @@
 # Password WebDAV
 
+版本说明：
+
+- [1.0.0 功能和说明、1.0.1 升级内容](CHANGELOG.md)
+
 `Password WebDAV` 是一个只保留 Chrome 插件形态的密码管理工具。它直接把加密后的 vault 文件存到 WebDAV，不需要单独后端，也不再提供 web 版页面。
 
 ## 功能
