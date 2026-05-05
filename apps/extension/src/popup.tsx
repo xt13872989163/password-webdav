@@ -9,6 +9,7 @@ import {
   FolderPlus,
   GripVertical,
   Lock,
+  LogIn,
   Plus,
   RefreshCw,
   Save,
@@ -48,6 +49,7 @@ import {
 } from "@password-webdav/core";
 import {
   clearSessionMasterPassword,
+  DEFAULT_SAVE_PROMPT_WAIT_MS,
   clearUnlockedVault,
   DEFAULT_EXTENSION_CONFIG,
   EXTENSION_LANGUAGES,
@@ -56,12 +58,16 @@ import {
   loadExtensionConfig,
   loadSessionMasterPassword,
   loadUnlockedVault,
+  MAX_SAVE_PROMPT_WAIT_MS,
+  MIN_SAVE_PROMPT_WAIT_MS,
+  normalizeSavePromptWaitMs,
   saveExtensionConfig,
   saveSessionMasterPassword,
   saveUnlockedVault,
   type ExtensionConfig,
 } from "./extensionState";
 import { getMessages, getThemeLabel } from "./i18n";
+import { mapLoginTaskStateToRowStatus, type LoginRowStatus, type LoginTask } from "./loginProtocol";
 import "./popup.css";
 
 const ALL_FOLDERS = "__all__";
@@ -71,6 +77,7 @@ const URL_SUGGESTIONS_ID = "pw-url-suggestions";
 const USERNAME_SUGGESTIONS_ID = "pw-username-suggestions";
 const FOLDER_SUGGESTIONS_ID = "pw-folder-suggestions";
 const DEBUG_LOG_KEY = "password-webdav.popup-debug-log";
+const LOGIN_STATUS_POLL_MS = 500;
 
 type BrowseMode = "folders" | "all";
 type PanelMode = "main" | "settings" | "entry";
@@ -78,6 +85,24 @@ type DragItem =
   | { type: "entry"; entryId: string }
   | { type: "folder"; folder: string }
   | null;
+
+type PopupLoginTaskSummary = {
+  taskId: string;
+  state: LoginTask["state"];
+  rowStatus: LoginRowStatus | null;
+  updatedAt: string;
+  manualReason?: LoginTask["manualReason"];
+};
+
+function summarizeLoginTask(task: LoginTask): PopupLoginTaskSummary {
+  return {
+    taskId: task.taskId,
+    state: task.state,
+    rowStatus: mapLoginTaskStateToRowStatus(task.state),
+    updatedAt: task.updatedAt,
+    manualReason: task.manualReason,
+  };
+}
 
 function folderDisplayName(folder: string) {
   const parts = folder.split("/").filter(Boolean);
@@ -323,6 +348,8 @@ function PopupApp() {
   const [editingTagIndex, setEditingTagIndex] = useState<number | null>(null);
   const [editingTagValue, setEditingTagValue] = useState("");
   const [debugLog, setDebugLog] = useState<string[]>(() => loadDebugLog());
+  const [loginTasksByEntryId, setLoginTasksByEntryId] = useState<Record<string, PopupLoginTaskSummary>>({});
+  const [loginPendingByEntryId, setLoginPendingByEntryId] = useState<Record<string, boolean>>({});
 
   function appendDebugLog(message: string) {
     const locale = settings.language === "en" ? "en-US" : "zh-CN";
@@ -407,6 +434,21 @@ function PopupApp() {
       passwordHidden: isEn ? "Password is hidden." : "密码已隐藏。",
     };
   }, [settings.language]);
+  const loginText = useMemo(() => {
+    const isEn = settings.language === "en";
+    return {
+      idle: isEn ? "Login" : "登录",
+      starting: isEn ? "Opening" : "启动中",
+      loggingIn: isEn ? "Logging in" : "登录中",
+      continueAction: isEn ? "Continue" : "继续",
+      failed: isEn ? "Failed" : "失败",
+      entered: isEn ? "Entered" : "已进入",
+      unavailable: isEn ? "Add a login URL first." : "请先填写登录网址。",
+      startStatus: (label: string) => (isEn ? `Opening login page for ${label}.` : `正在为 ${label} 打开登录页。`),
+      focusStatus: (label: string) => (isEn ? `Focused active login for ${label}.` : `已切换到 ${label} 的登录页。`),
+      errorStatus: isEn ? "Failed to start login automation." : "启动自动登录失败。",
+    };
+  }, [settings.language]);
   const vaultSubpath = useMemo(() => getExtensionVaultSubpath(settings), [settings]);
   const selectedEntryIsNew = useMemo(() => isNewDraftEntry(vault, selectedEntry), [selectedEntry, vault]);
   const draftHost = useMemo(() => currentHost(selectedEntry?.url || tabUrl), [selectedEntry, tabUrl]);
@@ -444,6 +486,14 @@ function PopupApp() {
       : source;
     return [...sortEntriesForHost(filtered, host || query)].sort(byMostRecent);
   }, [host, query, vault]);
+
+  const trackedEntries = useMemo(() => {
+    if (panelMode !== "main") return [] as VaultEntry[];
+    return browseMode === "folders" ? entries : allEntries;
+  }, [allEntries, browseMode, entries, panelMode]);
+
+  const trackedEntryIds = useMemo(() => trackedEntries.map((entry) => entry.id), [trackedEntries]);
+  const trackedEntryIdsKey = useMemo(() => trackedEntryIds.join("|"), [trackedEntryIds]);
 
   const folderOptions = useMemo(() => {
     if (!vault) return [] as string[];
@@ -489,8 +539,145 @@ function PopupApp() {
     [suggestedEntries],
   );
 
+  useEffect(() => {
+    const entryIds = new Set((vault?.entries ?? []).map((entry) => entry.id));
+    setLoginTasksByEntryId((current) =>
+      Object.fromEntries(Object.entries(current).filter(([entryId]) => entryIds.has(entryId))),
+    );
+    setLoginPendingByEntryId((current) =>
+      Object.fromEntries(
+        Object.entries(current).filter(([entryId, isPending]) => entryIds.has(entryId) && isPending),
+      ),
+    );
+  }, [vault]);
+
+  useEffect(() => {
+    if (!vault || trackedEntryIds.length === 0) return;
+    let cancelled = false;
+
+    const refreshLoginSnapshot = async () => {
+      try {
+        const response = (await chrome.runtime.sendMessage({
+          type: "login.snapshot",
+          entryIds: trackedEntryIds,
+        })) as { ok?: boolean; tasks?: LoginTask[] } | undefined;
+        if (cancelled || !response?.ok) return;
+
+        const nextSummaries = new Map<string, PopupLoginTaskSummary>();
+        for (const task of response.tasks ?? []) {
+          const summary = summarizeLoginTask(task);
+          if (summary.rowStatus) {
+            nextSummaries.set(task.entryId, summary);
+          }
+        }
+
+        setLoginTasksByEntryId((current) => {
+          const next = { ...current };
+          for (const entryId of trackedEntryIds) {
+            delete next[entryId];
+          }
+          for (const [entryId, summary] of nextSummaries.entries()) {
+            next[entryId] = summary;
+          }
+          return next;
+        });
+      } catch {
+        // ignore transient background wakeup errors
+      }
+    };
+
+    void refreshLoginSnapshot();
+    const timer = window.setInterval(() => {
+      void refreshLoginSnapshot();
+    }, LOGIN_STATUS_POLL_MS);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [trackedEntryIds, trackedEntryIdsKey, vault]);
+
   function updateVaultSubpath(value: string) {
     setSettings((current) => ({ ...current, vaultPath: normalizeStoredVaultPath(value) }));
+  }
+
+  function updateSavePromptWaitSeconds(value: string) {
+    const numeric = Number(value);
+    setSettings((current) => ({
+      ...current,
+      savePromptWaitMs: normalizeSavePromptWaitMs(
+        Number.isFinite(numeric) && numeric > 0 ? numeric * 1000 : DEFAULT_SAVE_PROMPT_WAIT_MS,
+      ),
+    }));
+  }
+
+  function loginActionLabel(summary: PopupLoginTaskSummary | null | undefined, pending: boolean) {
+    if (pending) return loginText.starting;
+    switch (summary?.rowStatus) {
+      case "logging_in":
+        return loginText.loggingIn;
+      case "continue":
+        return loginText.continueAction;
+      case "failed":
+        return loginText.failed;
+      case "entered":
+        return loginText.entered;
+      default:
+        return loginText.idle;
+    }
+  }
+
+  function loginActionTone(summary: PopupLoginTaskSummary | null | undefined, pending: boolean) {
+    if (pending) return "pending";
+    switch (summary?.rowStatus) {
+      case "logging_in":
+        return "logging";
+      case "continue":
+        return "manual";
+      case "failed":
+        return "failed";
+      case "entered":
+        return "success";
+      default:
+        return "idle";
+    }
+  }
+
+  async function handleStartLogin(entry: VaultEntry) {
+    if (!entry.url.trim()) {
+      setStatus(loginText.unavailable);
+      return;
+    }
+
+    const entryLabel = describeEntry(entry);
+    setLoginPendingByEntryId((current) => ({ ...current, [entry.id]: true }));
+    setStatus(loginText.startStatus(entryLabel));
+
+    try {
+      const response = (await chrome.runtime.sendMessage({
+        type: "login.start",
+        entryId: entry.id,
+      })) as { ok?: boolean; reused?: boolean; task?: LoginTask; message?: string } | undefined;
+
+      if (!response?.ok || !response.task) {
+        setStatus(response?.message || loginText.errorStatus);
+        return;
+      }
+
+      setLoginTasksByEntryId((current) => ({
+        ...current,
+        [entry.id]: summarizeLoginTask(response.task),
+      }));
+      setStatus(response.reused ? loginText.focusStatus(entryLabel) : loginText.startStatus(entryLabel));
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : loginText.errorStatus);
+    } finally {
+      setLoginPendingByEntryId((current) => {
+        const next = { ...current };
+        delete next[entry.id];
+        return next;
+      });
+    }
   }
 
   function updateSelectedEntry(next: VaultEntry, autoMatchLabel = "") {
@@ -801,6 +988,8 @@ function PopupApp() {
     setDirty(false);
     setPanelMode("main");
     setRevealedEntryId(null);
+    setLoginTasksByEntryId({});
+    setLoginPendingByEntryId({});
     setStatus(text.status.locked);
   }
 
@@ -1029,6 +1218,13 @@ function PopupApp() {
     const accountText = entry.username || entry.url || text.noAccount;
     const accountCopyValue = entry.username || entry.url;
     const accountCopyLabel = entry.username ? text.account : text.url;
+    const loginSummary = loginTasksByEntryId[entry.id];
+    const loginPending = Boolean(loginPendingByEntryId[entry.id]);
+    const loginLabel = loginActionLabel(loginSummary, loginPending);
+    const loginTone = loginActionTone(loginSummary, loginPending);
+    const folderChipLabel = showFolderChip
+      ? folderFilterLabel(entryFolder(entry) || UNCATEGORIZED_FOLDER, text)
+      : "";
 
     return (
       <article
@@ -1094,6 +1290,7 @@ function PopupApp() {
               <span className="entry-host" title={entry.url || text.noUrl}>
                 {currentHost(entry.url) || text.noUrl}
               </span>
+              {showFolderChip ? <span className="entry-folder-chip">{folderChipLabel}</span> : null}
             </div>
             <div className="entry-credentials">
               <button
@@ -1119,6 +1316,27 @@ function PopupApp() {
                   }}
                 >
                   {revealed ? entry.password : "********"}
+                </button>
+                <button
+                  type="button"
+                  className={`entry-login-button ${loginTone}`}
+                  title={loginLabel}
+                  disabled={loginPending || !entry.url.trim()}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    void handleStartLogin(entry);
+                  }}
+                >
+                  {loginPending ? (
+                    <RefreshCw size={12} className="spin" />
+                  ) : loginSummary?.rowStatus ? (
+                    <span>{loginLabel}</span>
+                  ) : (
+                    <>
+                      <LogIn size={12} />
+                      <span>{loginLabel}</span>
+                    </>
+                  )}
                 </button>
                 <button
                   type="button"
@@ -1452,6 +1670,18 @@ function PopupApp() {
           <p className="field-help compact-hint">
             {text.uiSettingsHint}
           </p>
+          <label className="field">
+            <span>{text.savePromptWaitSeconds}</span>
+            <input
+              type="number"
+              min={MIN_SAVE_PROMPT_WAIT_MS / 1000}
+              max={MAX_SAVE_PROMPT_WAIT_MS / 1000}
+              step={1}
+              value={Math.round(settings.savePromptWaitMs / 1000)}
+              onChange={(event) => updateSavePromptWaitSeconds(event.target.value)}
+            />
+          </label>
+          <p className="field-help compact-hint">{text.savePromptWaitHint}</p>
           <div className="action-row">
             <button type="button" className="primary-button compact" onClick={() => void handleSaveSettings()}>
               <Save size={15} />

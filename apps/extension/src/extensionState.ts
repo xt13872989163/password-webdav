@@ -3,12 +3,16 @@ import { normalizeStoredVaultPath, vaultSubpathFromStoredPath, type PlainVault, 
 const CONFIG_KEY = "password-webdav.extension.config";
 const VAULT_KEY = "password-webdav.extension.vault";
 const MASTER_PASSWORD_KEY = "password-webdav.extension.master-password";
+export const DEFAULT_SAVE_PROMPT_WAIT_MS = 5000;
+export const MIN_SAVE_PROMPT_WAIT_MS = 1000;
+export const MAX_SAVE_PROMPT_WAIT_MS = 15000;
 
 export type ExtensionTheme = "fresh" | "night" | "contrast" | "tech" | "forest" | "amber" | "graphite";
 export type ExtensionLanguage = "zh" | "en";
 export type ExtensionConfig = WebDavConfig & {
   theme: ExtensionTheme;
   language: ExtensionLanguage;
+  savePromptWaitMs: number;
 };
 
 export const EXTENSION_THEMES: Array<{ value: ExtensionTheme; label: string }> = [
@@ -33,6 +37,7 @@ export const DEFAULT_EXTENSION_CONFIG: ExtensionConfig = {
   vaultPath: normalizeStoredVaultPath("password-vault.json"),
   theme: "fresh",
   language: "zh",
+  savePromptWaitMs: DEFAULT_SAVE_PROMPT_WAIT_MS,
 };
 
 function normalizeTheme(value: unknown): ExtensionTheme {
@@ -50,6 +55,12 @@ function normalizeLanguage(value: unknown): ExtensionLanguage {
   return value === "en" ? "en" : "zh";
 }
 
+export function normalizeSavePromptWaitMs(value: unknown): number {
+  const numeric = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(numeric)) return DEFAULT_SAVE_PROMPT_WAIT_MS;
+  return Math.min(MAX_SAVE_PROMPT_WAIT_MS, Math.max(MIN_SAVE_PROMPT_WAIT_MS, Math.round(numeric)));
+}
+
 export async function loadExtensionConfig(): Promise<ExtensionConfig> {
   const result = await chrome.storage.local.get(CONFIG_KEY);
   const next = { ...DEFAULT_EXTENSION_CONFIG, ...(result[CONFIG_KEY] as Partial<ExtensionConfig> | undefined) };
@@ -58,6 +69,7 @@ export async function loadExtensionConfig(): Promise<ExtensionConfig> {
     vaultPath: normalizeStoredVaultPath(next.vaultPath),
     theme: normalizeTheme(next.theme),
     language: normalizeLanguage(next.language),
+    savePromptWaitMs: normalizeSavePromptWaitMs(next.savePromptWaitMs),
   };
 }
 
@@ -68,6 +80,7 @@ export async function saveExtensionConfig(config: ExtensionConfig) {
       vaultPath: normalizeStoredVaultPath(config.vaultPath),
       theme: normalizeTheme(config.theme),
       language: normalizeLanguage(config.language),
+      savePromptWaitMs: normalizeSavePromptWaitMs(config.savePromptWaitMs),
     },
   });
 }

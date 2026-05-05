@@ -51,6 +51,8 @@ type MessageSet = {
   vaultSubpath: string;
   uiSettings: string;
   uiSettingsHint: string;
+  savePromptWaitSeconds: string;
+  savePromptWaitHint: string;
   theme: string;
   language: string;
   saveSettings: string;
@@ -234,6 +236,8 @@ const zh: MessageSet = {
   vaultSubpath: "Vault 子路径",
   uiSettings: "界面设置",
   uiSettingsHint: "只保存在当前浏览器，不写入 WebDAV vault",
+  savePromptWaitSeconds: "保存提示最长等待（秒）",
+  savePromptWaitHint: "默认 5 秒。登录成功会提前弹出，超时仍未确认成功则不弹。",
   theme: "主题",
   language: "语言",
   saveSettings: "保存设置",
@@ -387,6 +391,8 @@ const en: MessageSet = {
   vaultSubpath: "Vault subpath",
   uiSettings: "Interface",
   uiSettingsHint: "Saved only in this browser, not in the WebDAV vault",
+  savePromptWaitSeconds: "Save prompt max wait (seconds)",
+  savePromptWaitHint: "Default 5 seconds. Show earlier when login succeeds. Do not show if success is still unconfirmed after timeout.",
   theme: "Theme",
   language: "Language",
   saveSettings: "Save settings",

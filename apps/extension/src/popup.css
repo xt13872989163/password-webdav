@@ -172,6 +172,16 @@
   box-sizing: border-box;
 }
 
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 html,
 body,
 #root {
@@ -384,6 +394,11 @@ textarea:focus-visible {
   gap: 6px;
 }
 
+.header-actions {
+  flex-wrap: nowrap;
+  flex: 0 0 auto;
+}
+
 .header-preferences {
   display: inline-flex;
   align-items: center;
@@ -413,6 +428,7 @@ textarea:focus-visible {
 .view-toggle {
   display: inline-flex;
   align-items: center;
+  flex: 0 0 auto;
   padding: 2px;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -421,12 +437,16 @@ textarea:focus-visible {
 
 .view-toggle button {
   min-height: 26px;
+  min-width: 42px;
   padding: 0 10px;
   border-radius: 6px;
   background: transparent;
   color: var(--muted);
   font-size: 11px;
   font-weight: 700;
+  white-space: nowrap;
+  word-break: keep-all;
+  writing-mode: horizontal-tb;
 }
 
 .view-toggle button.active {
@@ -539,6 +559,10 @@ textarea:focus-visible {
 .text-button:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+.spin {
+  animation: spin 0.9s linear infinite;
 }
 
 .toolbar-row {
@@ -855,6 +879,20 @@ textarea:focus-visible {
   min-width: 0;
 }
 
+.entry-folder-chip {
+  grid-column: 1 / -1;
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  min-height: 18px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: var(--chip-bg);
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+}
+
 .entry-title-button,
 .entry-host,
 .entry-username {
@@ -1051,10 +1089,67 @@ textarea:focus-visible {
   flex: 2 1 190px;
   min-width: 180px;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 28px 28px;
+  grid-template-columns: minmax(0, 1fr) auto 28px 28px;
   align-items: center;
   gap: 6px;
   margin: 0;
+}
+
+.entry-login-button {
+  min-width: 0;
+  min-height: 28px;
+  padding: 0 9px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--button-bg);
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 800;
+  white-space: nowrap;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease,
+    opacity 0.15s ease;
+}
+
+.entry-login-button:hover:not(:disabled) {
+  background: var(--accent-soft);
+  border-color: var(--line-strong);
+}
+
+.entry-login-button.logging,
+.entry-login-button.pending {
+  background: var(--accent-soft);
+  border-color: var(--line-strong);
+  color: var(--accent);
+}
+
+.entry-login-button.manual {
+  background: var(--button-bg);
+  border-color: var(--line-strong);
+  color: var(--accent);
+}
+
+.entry-login-button.failed {
+  background: var(--danger-bg);
+  border-color: var(--danger-line);
+  color: var(--danger-text);
+}
+
+.entry-login-button.success {
+  background: var(--accent-soft);
+  border-color: var(--line-strong);
+  color: var(--accent);
+}
+
+.entry-login-button:disabled {
+  opacity: 0.72;
+  cursor: not-allowed;
 }
 
 .inline-delete {

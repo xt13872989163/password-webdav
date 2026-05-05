@@ -13,7 +13,6 @@ export default defineConfig({
         popup: resolve(__dirname, "popup.html"),
         options: resolve(__dirname, "options.html"),
         background: resolve(__dirname, "src/background.ts"),
-        contentScript: resolve(__dirname, "src/contentScript.ts"),
       },
       output: {
         entryFileNames: "assets/[name].js",
@@ -23,4 +22,3 @@ export default defineConfig({
     },
   },
 });
-

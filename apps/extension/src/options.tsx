@@ -1,11 +1,15 @@
 import { createRoot } from "react-dom/client";
 import { useEffect, useState } from "react";
 import {
+  DEFAULT_SAVE_PROMPT_WAIT_MS,
   DEFAULT_EXTENSION_CONFIG,
   EXTENSION_LANGUAGES,
   EXTENSION_THEMES,
   getExtensionVaultSubpath,
   loadExtensionConfig,
+  MAX_SAVE_PROMPT_WAIT_MS,
+  MIN_SAVE_PROMPT_WAIT_MS,
+  normalizeSavePromptWaitMs,
   saveExtensionConfig,
   type ExtensionConfig,
 } from "./extensionState";
@@ -23,6 +27,16 @@ function OptionsApp() {
 
   const vaultSubpath = getExtensionVaultSubpath(settings);
   const text = getMessages(settings.language);
+
+  function updateSavePromptWaitSeconds(value: string) {
+    const numeric = Number(value);
+    setSettings((current) => ({
+      ...current,
+      savePromptWaitMs: normalizeSavePromptWaitMs(
+        Number.isFinite(numeric) && numeric > 0 ? numeric * 1000 : DEFAULT_SAVE_PROMPT_WAIT_MS,
+      ),
+    }));
+  }
 
   async function handleSave() {
     await saveExtensionConfig(settings);
@@ -88,6 +102,18 @@ function OptionsApp() {
             ))}
           </select>
         </label>
+        <label className="field">
+          <span>{text.savePromptWaitSeconds}</span>
+          <input
+            type="number"
+            min={MIN_SAVE_PROMPT_WAIT_MS / 1000}
+            max={MAX_SAVE_PROMPT_WAIT_MS / 1000}
+            step={1}
+            value={Math.round(settings.savePromptWaitMs / 1000)}
+            onChange={(event) => updateSavePromptWaitSeconds(event.target.value)}
+          />
+        </label>
+        <p className="field-help">{text.savePromptWaitHint}</p>
         <button type="button" className="primary-button" onClick={() => void handleSave()}>
           {text.saveSettings}
         </button>
