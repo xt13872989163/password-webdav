@@ -6,6 +6,7 @@ import {
   classifyCurrentPage,
   fillLoginFields,
   findPrimaryLoginFields,
+  submitPrimaryLogin,
 } from "./contentLogin";
 
 describe("contentLogin classification", () => {
@@ -70,5 +71,30 @@ describe("contentLogin classification", () => {
     expect(fillLoginFields("devops@acme.cn", "secret")).toBe(true);
     expect((document.getElementById("user") as HTMLInputElement).value).toBe("devops@acme.cn");
     expect((document.getElementById("pass") as HTMLInputElement).value).toBe("secret");
+  });
+
+  it("fills and clicks a non-form Chinese login panel", () => {
+    let clicked = false;
+    document.body.innerHTML = `
+      <div class="el-form">
+        <div class="el-form-item">
+          <input id="user" type="text" autocomplete="username" placeholder="用户名" />
+        </div>
+        <div class="el-form-item">
+          <input id="pass" type="password" autocomplete="current-password" placeholder="密码" />
+        </div>
+        <button id="submit" type="button">登录</button>
+      </div>
+    `;
+    document.getElementById("submit")?.addEventListener("click", () => {
+      clicked = true;
+    });
+
+    expect(classifyCurrentPage().classification).toBe("login_form");
+    expect(fillLoginFields("admin", "secret-123")).toBe(true);
+    expect(submitPrimaryLogin()).toBe(true);
+    expect((document.getElementById("user") as HTMLInputElement).value).toBe("admin");
+    expect((document.getElementById("pass") as HTMLInputElement).value).toBe("secret-123");
+    expect(clicked).toBe(true);
   });
 });
