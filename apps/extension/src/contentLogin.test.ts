@@ -27,6 +27,20 @@ describe("contentLogin classification", () => {
     expect(findPrimaryLoginFields()?.password).not.toBeNull();
   });
 
+  it("classifies a Chinese JavaScript login button as a login form", () => {
+    document.body.innerHTML = `
+      <form>
+        <input type="text" placeholder="用户名" />
+        <input type="password" placeholder="密码" />
+        <button type="button">登录</button>
+      </form>
+    `;
+    const fields = findPrimaryLoginFields();
+    expect(classifyCurrentPage().classification).toBe("login_form");
+    expect(fields?.username).not.toBeNull();
+    expect(fields?.submit?.textContent).toContain("登录");
+  });
+
   it("classifies a captcha page as manual_required", () => {
     document.body.innerHTML = `
       <div>Verify it's you</div>

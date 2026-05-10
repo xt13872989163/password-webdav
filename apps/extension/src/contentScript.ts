@@ -24,6 +24,10 @@ interface AutofillSuggestionResponse {
   message?: string;
 }
 
+const LOGIN_ACTION_TEXT_RE = /\b(sign in|log in|login|continue|next)\b|登录|登入|继续|下一步/i;
+const LOGIN_FIELD_HINT_RE = /user(name)?|login|account|email|mail|phone|mobile|identifier|用户名|账号|账户|用户|邮箱|邮件|手机/;
+const NON_LOGIN_FIELD_HINT_RE = /search|filter|query|code|otp|captcha|token|verify|verification|搜索|筛选|查询|验证码|动态码|口令/;
+
 let lastCandidate: DetectedLoginCandidate | null = null;
 let promptEl: HTMLDivElement | null = null;
 let promptLoading = false;
@@ -186,10 +190,10 @@ function loginFieldHints(input: HTMLInputElement) {
   if (autocomplete.includes("username")) score += 8;
   if (autocomplete.includes("email")) score += 7;
   if (autocomplete.includes("current-password")) score -= 8;
-  if (/user(name)?|login|account|email|mail|phone|mobile|identifier|璐﹀彿|甯愭埛|璐︽埛|鐢ㄦ埛|閭|閭欢|鎵嬫満/.test(name)) {
+  if (LOGIN_FIELD_HINT_RE.test(name)) {
     score += 5;
   }
-  if (/search|filter|query|code|otp|captcha|token|verify|verification|鎼滅储|绛涢€墊鏌ヨ|楠岃瘉鐮亅鍔ㄦ€佺爜|鍙ｄ护/.test(name)) {
+  if (NON_LOGIN_FIELD_HINT_RE.test(name)) {
     score -= 6;
   }
   if (type === "email") score += 4;
@@ -291,28 +295,68 @@ function visiblePasswordCount(root: ParentNode = document) {
   return visiblePasswordFields(root).length;
 }
 
-function candidateFromPasswordInput(input: HTMLInputElement): DetectedLoginCandidate | null {
-  if (!input.value) return null;
-  const loginContext = findLoginContext(input);
-  if (!loginContext || visiblePasswordCount(loginContext.root) !== 1) return null;
-  const inspection = classifyCurrentPage(loginContext.root);
-  if (inspection.classification !== "login_form" && inspection.classification !== "password_only") {
-    return null;
-  }
-  const usernameField = loginContext?.usernameField ?? null;
+function candidateFromFields(
+  passwordField: HTMLInputElement,
+  usernameField: HTMLInputElement | null,
+): DetectedLoginCandidate {
   return {
     username: usernameField?.value || "",
-    password: input.value,
+    password: passwordField.value,
     url: location.origin,
     title: document.title || location.hostname,
   };
 }
 
-function candidateFromForm(form: HTMLFormElement): DetectedLoginCandidate | null {
-  if (visiblePasswordCount(form) !== 1) return null;
-  const passwordField = findPasswordField(form);
+function candidateFromPasswordInput(
+  input: HTMLInputElement,
+  options: { trustLoginAction?: boolean } = {},
+): DetectedLoginCandidate | null {
+  if (!input.value) return null;
+  const loginContext = findLoginContext(input);
+  if (!loginContext || visiblePasswordCount(loginContext.root) !== 1) return null;
+  const inspection = classifyCurrentPage(loginContext.root);
+  if (!options.trustLoginAction && inspection.classification !== "login_form" && inspection.classification !== "password_only") {
+    return null;
+  }
+  return candidateFromFields(loginContext.passwordField, loginContext.usernameField);
+}
+
+function candidateFromRoot(root: ParentNode, options: { trustLoginAction?: boolean } = {}): DetectedLoginCandidate | null {
+  if (visiblePasswordCount(root) !== 1) return null;
+  const passwordField = findPasswordField(root);
   if (!passwordField?.value) return null;
-  return candidateFromPasswordInput(passwordField);
+  const inspection = classifyCurrentPage(root);
+  if (!options.trustLoginAction && inspection.classification !== "login_form" && inspection.classification !== "password_only") {
+    return null;
+  }
+  return candidateFromFields(passwordField, findUsernameField(root, passwordField));
+}
+
+function candidateFromForm(form: HTMLFormElement): DetectedLoginCandidate | null {
+  return candidateFromRoot(form);
+}
+
+function controlText(control: HTMLButtonElement | HTMLInputElement) {
+  return control instanceof HTMLInputElement
+    ? `${control.value} ${control.getAttribute("aria-label") || ""} ${control.title || ""}`.trim()
+    : `${control.textContent || ""} ${control.getAttribute("aria-label") || ""} ${control.title || ""}`.trim();
+}
+
+function isLikelyLoginActionControl(control: HTMLButtonElement | HTMLInputElement) {
+  if (control.disabled) return false;
+  return LOGIN_ACTION_TEXT_RE.test(controlText(control));
+}
+
+function submitRootForControl(control: HTMLButtonElement | HTMLInputElement): ParentNode | null {
+  if (control.form) return control.form;
+
+  let ancestor = control.parentElement;
+  while (ancestor && ancestor !== document.body) {
+    if (visiblePasswordCount(ancestor) === 1) return ancestor;
+    ancestor = ancestor.parentElement;
+  }
+
+  return visiblePasswordCount(document) === 1 ? document : null;
 }
 
 function sendRuntimeMessage<T>(message: unknown) {
@@ -419,6 +463,7 @@ async function maybeShowSavePromptAfterLogin(maxWaitMs?: number) {
 }
 
 function scheduleLoginTaskSync(delay = 120) {
+  if (typeof window === "undefined" || typeof document === "undefined") return;
   if (loginSyncTimer) {
     window.clearTimeout(loginSyncTimer);
   }
@@ -1207,6 +1252,20 @@ function handleLikelySubmit(form: HTMLFormElement | null) {
   showPromptWhenLoginPageDisappears();
 }
 
+function handleLikelyLoginAction(control: HTMLButtonElement | HTMLInputElement) {
+  if (control.type.toLowerCase() === "submit") {
+    handleLikelySubmit(control.form ?? control.closest("form"));
+    return;
+  }
+  if (!isLikelyLoginActionControl(control)) return;
+  const root = submitRootForControl(control);
+  if (!root) return;
+  const candidate = candidateFromRoot(root, { trustLoginAction: true });
+  if (!candidate) return;
+  void stageCandidate(candidate);
+  showPromptWhenLoginPageDisappears();
+}
+
 document.addEventListener(
   "submit",
   (event) => {
@@ -1223,9 +1282,11 @@ document.addEventListener(
   (event) => {
     const target = event.target;
     if (!(target instanceof Element)) return;
-    const button = target.closest<HTMLButtonElement | HTMLInputElement>('button, input[type="submit"]');
-    if (!button || button.type !== "submit") return;
-    handleLikelySubmit(button.form ?? button.closest("form"));
+    const button = target.closest<HTMLButtonElement | HTMLInputElement>(
+      'button, input[type="submit"], input[type="button"]',
+    );
+    if (!button) return;
+    handleLikelyLoginAction(button);
   },
   true,
 );

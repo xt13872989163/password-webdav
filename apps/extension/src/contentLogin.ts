@@ -28,16 +28,16 @@ export interface LoginFieldTargets {
   form: HTMLFormElement | null;
 }
 
-const LOGIN_TEXT_RE = /\b(sign in|log in|login|continue|next)\b|登录/i;
+const LOGIN_TEXT_RE = /\b(sign in|log in|login|continue|next)\b|登录|登入|继续|下一步/i;
 const PASSWORD_STEP_RE = /\b(password|enter your password)\b|密码/i;
 const CAPTCHA_RE = /\b(captcha|recaptcha|hcaptcha)\b|验证码/i;
-const OTP_RE = /\b(otp|2fa|mfa|verification code|one-time code|authenticator)\b|短信验证码|邮箱验证码/i;
-const ACCOUNT_CHOOSER_RE = /\b(choose an account|select an account|pick an account)\b|选择账号/i;
-const CONSENT_RE = /\b(allow|authorize|consent|approve|grant access)\b|授权|批准/i;
-const VERIFY_RE = /\b(verify it's you|verify your identity|security check|passkey)\b|安全验证|确认是你本人/i;
+const OTP_RE = /\b(otp|2fa|mfa|verification code|one-time code|authenticator)\b|短信验证码|邮箱验证码|动态码|一次性验证码/i;
+const ACCOUNT_CHOOSER_RE = /\b(choose an account|select an account|pick an account)\b|选择账号|选择账户/i;
+const CONSENT_RE = /\b(allow|authorize|consent|approve|grant access)\b|授权|批准|同意/i;
+const VERIFY_RE = /\b(verify it's you|verify your identity|security check|passkey)\b|安全验证|确认是你本人|身份验证/i;
 const ERROR_RE =
   /\b(incorrect password|wrong password|invalid credentials|login failed|sign in failed|try again)\b|账号或密码错误|用户名或密码错误|登录失败/i;
-const LOGGED_IN_TEXT_RE = /\b(log out|logout|sign out|dashboard|workspace|projects|settings|profile)\b|退出登录|工作台|控制台/i;
+const LOGGED_IN_TEXT_RE = /\b(log out|logout|sign out|dashboard|workspace|projects|settings|profile)\b|退出登录|工作台|控制台|仪表盘/i;
 
 function normalizedText(root: ParentNode = document) {
   const body = root instanceof Document ? root.body : root;
@@ -76,7 +76,7 @@ function visibleUsernameFields(root: ParentNode = document) {
       autocomplete.includes("username") ||
       autocomplete.includes("email") ||
       type === "email" ||
-      /user(name)?|login|account|email|mail|identifier|phone|mobile|账号|用户|邮箱|手机/.test(hint)
+      /user(name)?|login|account|email|mail|identifier|phone|mobile|用户名|账号|账户|用户|邮箱|邮件|手机/.test(hint)
     );
   });
 }
