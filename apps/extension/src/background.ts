@@ -95,12 +95,33 @@ function urlOrigin(value: string) {
   }
 }
 
+function normalizeEntryUrl(value: string) {
+  try {
+    return new URL(value).href;
+  } catch {
+    return "";
+  }
+}
+
 function urlHost(value: string) {
   try {
     return new URL(value).host.replace(/^www\./, "");
   } catch {
     return "";
   }
+}
+
+function loginTargetUrl(entryUrl: string, suggestedUrl = "") {
+  const normalizedEntryUrl = normalizeEntryUrl(entryUrl);
+  const normalizedSuggestedUrl = normalizeEntryUrl(suggestedUrl);
+  if (!normalizedEntryUrl || !normalizedSuggestedUrl) return normalizedEntryUrl;
+  if (urlOrigin(normalizedEntryUrl) !== urlOrigin(normalizedSuggestedUrl)) return normalizedEntryUrl;
+
+  const entry = new URL(normalizedEntryUrl);
+  const suggested = new URL(normalizedSuggestedUrl);
+  const entryIsOriginOnly = entry.pathname === "/" && !entry.search && !entry.hash;
+  const suggestedIsMoreSpecific = suggested.pathname !== "/" || Boolean(suggested.search || suggested.hash);
+  return entryIsOriginOnly && suggestedIsMoreSpecific ? normalizedSuggestedUrl : normalizedEntryUrl;
 }
 
 function now() {
@@ -198,18 +219,18 @@ async function loadUnlockedEntry(entryId: string) {
   return vault.entries.find((entry) => entry.id === entryId) ?? null;
 }
 
-function createLoginTask(entry: VaultEntry, tabId: number): LoginTask {
+function createLoginTask(entry: VaultEntry, tabId: number, targetUrl = entry.url): LoginTask {
   const timestamp = nowIso();
   return {
     taskId: uuid(),
     entryId: entry.id,
     tabId,
-    targetUrl: entry.url,
-    expectedHost: urlHost(entry.url),
+    targetUrl,
+    expectedHost: urlHost(targetUrl),
     state: "waiting_page",
     startedAt: timestamp,
     updatedAt: timestamp,
-    lastUrl: entry.url,
+    lastUrl: targetUrl,
     submitCount: 0,
     actionPageKeys: [],
   };
@@ -230,7 +251,7 @@ async function sendLoginCommand(tabId: number, command: LoginCommand) {
   }
 }
 
-async function startLoginTask(entryId: string) {
+async function startLoginTask(entryId: string, suggestedUrl = "") {
   await ensureLoginTasksLoaded();
 
   const existingTaskId = activeTaskIdByEntryId.get(entryId);
@@ -249,12 +270,13 @@ async function startLoginTask(entryId: string) {
     return { ok: false, message: "Entry unavailable." };
   }
 
-  const tab = await chrome.tabs.create({ url: entry.url, active: true });
+  const targetUrl = loginTargetUrl(entry.url, suggestedUrl);
+  const tab = await chrome.tabs.create({ url: targetUrl, active: true });
   if (!tab.id) {
     return { ok: false, message: "Failed to open login tab." };
   }
 
-  const task = await saveLoginTask(createLoginTask(entry, tab.id));
+  const task = await saveLoginTask(createLoginTask(entry, tab.id, targetUrl));
   return { ok: true, reused: false, task };
 }
 
@@ -449,14 +471,15 @@ function normalizeCandidate(value: unknown, language: ExtensionLanguage = "zh"):
   const candidate = value as Partial<DetectedLoginCandidate> | undefined;
   const password = String(candidate?.password || "");
   const url = String(candidate?.url || "");
-  if (!password || !urlOrigin(url)) {
+  const normalizedUrl = normalizeEntryUrl(url);
+  if (!password || !normalizedUrl) {
     throw new Error(BACKGROUND_TEXT[language].invalidCandidate);
   }
 
   return {
     username: String(candidate?.username || ""),
     password,
-    url: urlOrigin(url),
+    url: normalizedUrl,
     title: String(candidate?.title || ""),
     detectedAt: String(candidate?.detectedAt || nowIso()),
     folder: normalizeFolderPath(String(candidate?.folder || "")),
@@ -507,6 +530,8 @@ function upsertByUrlAndUsername(vault: PlainVault, nextEntry: VaultEntry) {
   const now = nowIso();
   const existing = vault.entries.find(
     (entry) => entry.url === nextEntry.url && entry.username === nextEntry.username,
+  ) ?? vault.entries.find(
+    (entry) => urlOrigin(entry.url) === urlOrigin(nextEntry.url) && entry.username === nextEntry.username,
   );
   if (!existing) {
     return {
@@ -526,6 +551,7 @@ function upsertByUrlAndUsername(vault: PlainVault, nextEntry: VaultEntry) {
             ...entry,
             password: nextEntry.password,
             title: nextEntry.title || entry.title,
+            url: nextEntry.url,
             folder: nextEntry.folder,
             updatedAt: now,
           }
@@ -750,7 +776,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message?.type === "login.start") {
-    void startLoginTask(String(message.entryId || ""))
+    void startLoginTask(String(message.entryId || ""), String(message.currentUrl || ""))
       .then((result) => sendResponse(result))
       .catch((error) =>
         sendResponse({

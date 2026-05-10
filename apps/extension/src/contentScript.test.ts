@@ -84,6 +84,7 @@ describe("contentScript login detection", () => {
         entry: expect.objectContaining({
           username: "admin",
           password: "secret-123",
+          url: "http://localhost:3000/login",
         }),
       }),
     );

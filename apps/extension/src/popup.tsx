@@ -657,6 +657,7 @@ function PopupApp() {
       const response = (await chrome.runtime.sendMessage({
         type: "login.start",
         entryId: entry.id,
+        currentUrl: tabUrl,
       })) as { ok?: boolean; reused?: boolean; task?: LoginTask; message?: string } | undefined;
 
       if (!response?.ok || !response.task) {

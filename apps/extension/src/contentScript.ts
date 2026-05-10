@@ -302,7 +302,7 @@ function candidateFromFields(
   return {
     username: usernameField?.value || "",
     password: passwordField.value,
-    url: location.origin,
+    url: location.href,
     title: document.title || location.hostname,
   };
 }
