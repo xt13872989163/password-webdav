@@ -129,4 +129,92 @@ describe("background detected login handling", () => {
     });
     expect(response.task?.targetUrl).toBe("http://43.162.114.3:40619/de8ae79dac");
   });
+
+  it("treats the same origin and username as already saved", async () => {
+    const { listeners, sessionStore } = installChromeStub();
+    sessionStore["password-webdav.extension.vault"] = {
+      version: 1,
+      updatedAt: "2026-05-10T00:00:00.000Z",
+      folders: ["servers"],
+      entries: [
+        {
+          id: "entry-1",
+          title: "1Panel",
+          username: "admin",
+          password: "secret-123",
+          url: "http://43.162.114.3:40619/",
+          folder: "servers",
+          notes: "",
+          tags: [],
+          createdAt: "2026-05-10T00:00:00.000Z",
+          updatedAt: "2026-05-10T00:00:00.000Z",
+        },
+      ],
+    };
+    await import("./background");
+
+    const response = await new Promise<{ alreadySaved?: boolean; defaultFolder?: string; defaultTitle?: string }>(
+      (resolve) => {
+        listeners[0](
+          {
+            type: "password-webdav.get-detected-login-folder-options",
+            entry: {
+              username: "admin",
+              password: "secret-123",
+              url: "http://43.162.114.3:40619/de8ae79dac",
+              title: "1Panel Login",
+            },
+          },
+          {},
+          (value) => resolve(value as { alreadySaved?: boolean; defaultFolder?: string; defaultTitle?: string }),
+        );
+      },
+    );
+
+    expect(response.alreadySaved).toBe(true);
+    expect(response.defaultFolder).toBe("servers");
+    expect(response.defaultTitle).toBe("1Panel");
+  });
+
+  it("still prompts when the saved password changed on the same origin and username", async () => {
+    const { listeners, sessionStore } = installChromeStub();
+    sessionStore["password-webdav.extension.vault"] = {
+      version: 1,
+      updatedAt: "2026-05-10T00:00:00.000Z",
+      folders: [],
+      entries: [
+        {
+          id: "entry-1",
+          title: "1Panel",
+          username: "admin",
+          password: "old-secret",
+          url: "http://43.162.114.3:40619/",
+          folder: "",
+          notes: "",
+          tags: [],
+          createdAt: "2026-05-10T00:00:00.000Z",
+          updatedAt: "2026-05-10T00:00:00.000Z",
+        },
+      ],
+    };
+    await import("./background");
+
+    const response = await new Promise<{ alreadySaved?: boolean }>((resolve) => {
+      listeners[0](
+        {
+          type: "password-webdav.get-detected-login-folder-options",
+          entry: {
+            username: "admin",
+            password: "new-secret",
+            url: "http://43.162.114.3:40619/de8ae79dac",
+            title: "1Panel",
+          },
+        },
+        {},
+        (value) => resolve(value as { alreadySaved?: boolean }),
+      );
+    });
+
+    expect(response.alreadySaved).toBe(false);
+  });
 });

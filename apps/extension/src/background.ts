@@ -526,13 +526,27 @@ function entryFromCandidate(candidate: DetectedLoginCandidate) {
   } satisfies VaultEntry;
 }
 
+function sameLoginUrl(left: string, right: string) {
+  const leftUrl = normalizeEntryUrl(left);
+  const rightUrl = normalizeEntryUrl(right);
+  if (!leftUrl || !rightUrl) return false;
+  return leftUrl === rightUrl || urlOrigin(leftUrl) === urlOrigin(rightUrl);
+}
+
+function sameLoginIdentity(entry: Pick<VaultEntry, "url" | "username">, candidate: Pick<VaultEntry, "url" | "username">) {
+  return entry.username === candidate.username && sameLoginUrl(entry.url, candidate.url);
+}
+
+function findExistingLoginEntry(entries: VaultEntry[], candidate: Pick<VaultEntry, "url" | "username">) {
+  return (
+    entries.find((entry) => entry.url === candidate.url && entry.username === candidate.username) ??
+    entries.find((entry) => sameLoginIdentity(entry, candidate))
+  );
+}
+
 function upsertByUrlAndUsername(vault: PlainVault, nextEntry: VaultEntry) {
   const now = nowIso();
-  const existing = vault.entries.find(
-    (entry) => entry.url === nextEntry.url && entry.username === nextEntry.username,
-  ) ?? vault.entries.find(
-    (entry) => urlOrigin(entry.url) === urlOrigin(nextEntry.url) && entry.username === nextEntry.username,
-  );
+  const existing = findExistingLoginEntry(vault.entries, nextEntry);
   if (!existing) {
     return {
       ...vault,
@@ -640,9 +654,7 @@ async function getDetectedLoginFolderOptions(value: unknown) {
 
   const language = await getBackgroundLanguage();
   const candidate = normalizeCandidate(value, language);
-  const existing = vault.entries.find(
-    (entry) => entry.url === candidate.url && entry.username === candidate.username,
-  );
+  const existing = findExistingLoginEntry(vault.entries, candidate);
   return {
     folders: vault.folders ?? [],
     defaultFolder: normalizeFolderPath(existing?.folder || ""),
