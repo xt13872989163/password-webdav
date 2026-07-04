@@ -634,7 +634,7 @@ async function showSavePrompt() {
   }>({
     type: "password-webdav.get-detected-login-folder-options",
     entry: candidate,
-  })) || { folders: [], defaultFolder: "", defaultTitle: "" };
+  })) || { folders: [], defaultFolder: "", defaultTitle: "", alreadySaved: false };
   const { theme: promptTheme, language } = await loadPromptConfig();
   const text = CONTENT_TEXT[language];
 
@@ -748,15 +748,24 @@ async function showSavePrompt() {
 
 function showPromptWhenLoginPageDisappears() {
   window.setTimeout(() => {
-    if (lastCandidate && !findPasswordField()) {
+    if (!lastCandidate) return;
+    const passwordField = findPasswordField();
+    // 密码框消失（页面跳转）或被清空（SPA 登录后清场）都算登录已发生
+    if (!passwordField || !passwordField.value) {
       void showSavePrompt();
     }
   }, 700);
 }
 
+let loginAttempted = false;
+
 function handleLikelySubmit(form: HTMLFormElement | null) {
-  if (!form) return;
-  void stageCandidate(candidateFromForm(form));
+  loginAttempted = true;
+  // 有 form 就从 form 读最新值；没有 form（SPA）就用 input 事件攒下的 lastCandidate
+  const candidate = form ? candidateFromForm(form) : lastCandidate;
+  if (candidate) {
+    void stageCandidate(candidate);
+  }
   showPromptWhenLoginPageDisappears();
 }
 
@@ -878,6 +887,70 @@ window.setTimeout(() => {
     void showSavePrompt();
   });
 }, 800);
+
+// 页面跳转前把候选 stage 到 background，避免 content script 被销毁后候选丢失
+window.addEventListener("beforeunload", () => {
+  if (!lastCandidate) return;
+  // fire-and-forget：消息会发给 service worker，即使本页上下文销毁也能送达
+  try {
+    chrome.runtime.sendMessage({
+      type: "password-webdav.stage-detected-login",
+      entry: lastCandidate,
+    });
+  } catch {
+    // 忽略：上下文可能已失效
+  }
+});
+
+// 监听 fetch/XHR，兜底识别 SPA 登录请求（很多 SPA 不触发传统 submit 事件）
+function maybeTriggerOnLoginRequest(url: string, body?: unknown) {
+  if (!lastCandidate) return;
+  try {
+    const lowerUrl = (url || "").toLowerCase();
+    const bodyText = typeof body === "string" ? body : "";
+    const lowerBody = bodyText.toLowerCase();
+    const isLoginLike =
+      /login|signin|sign-in|sign_in|log-in|log_in|auth\/token|session|account\/login/.test(lowerUrl) ||
+      (lowerBody && /login|signin|sign-in|sign_in|log-in|log_in/.test(lowerBody));
+    if (isLoginLike) {
+      loginAttempted = true;
+      showPromptWhenLoginPageDisappears();
+    }
+  } catch {
+    // 忽略解析错误
+  }
+}
+
+const originalFetch = window.fetch;
+window.fetch = function patchedFetch(input: RequestInfo | URL, init?: RequestInit) {
+  try {
+    const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input instanceof Request ? input.url : "";
+    maybeTriggerOnLoginRequest(url, init?.body);
+  } catch {
+    // 忽略
+  }
+  return originalFetch.apply(this, arguments as unknown as Parameters<typeof fetch>);
+};
+
+const originalXhrOpen = XMLHttpRequest.prototype.open;
+const originalXhrSend = XMLHttpRequest.prototype.send;
+XMLHttpRequest.prototype.open = function patchedXhrOpen(
+  this: XMLHttpRequest & { __pwdLoginUrl?: string },
+  method: string,
+  url: string,
+  ...rest: unknown[]
+) {
+  this.__pwdLoginUrl = url;
+  return (originalXhrOpen as (this: XMLHttpRequest, ...args: unknown[]) => void).call(this, method, url, ...rest);
+};
+XMLHttpRequest.prototype.send = function patchedXhrSend(body?: Document | XMLHttpRequestBodyInit | null) {
+  try {
+    maybeTriggerOnLoginRequest((this as XMLHttpRequest & { __pwdLoginUrl?: string }).__pwdLoginUrl || "", body);
+  } catch {
+    // 忽略
+  }
+  return originalXhrSend.call(this, body);
+};
 
 chrome.storage.onChanged.addListener((changes, areaName) => {
   if (areaName !== "local" || !changes[CONFIG_KEY]) return;
