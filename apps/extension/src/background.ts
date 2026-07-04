@@ -214,9 +214,13 @@ async function getDetectedLoginFolderOptions(value: unknown) {
 
   const language = await getBackgroundLanguage();
   const candidate = normalizeCandidate(value, language);
-  const existing = vault.entries.find(
-    (entry) => entry.url === candidate.url && entry.username === candidate.username,
-  );
+  const candidateUsername = candidate.username.trim().toLowerCase();
+  const candidateUrl = candidate.url;
+  const existing = vault.entries.find((entry) => {
+    const entryUrl = urlOrigin(entry.url) || entry.url;
+    const entryUsername = entry.username.trim().toLowerCase();
+    return entryUrl === candidateUrl && entryUsername === candidateUsername;
+  });
   return {
     folders: vault.folders ?? [],
     defaultFolder: normalizeFolderPath(existing?.folder || ""),
